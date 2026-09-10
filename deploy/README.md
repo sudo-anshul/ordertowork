@@ -91,6 +91,8 @@ Supply these values through the ECS task definition and secret references. Place
 | `OTW_S3_BUCKET` | Private application bucket name |
 | `OTW_AWS_REGION` | Actual S3/Bedrock region used by the app |
 | `OTW_AGENT_MODE` | `bedrock` for the real agent; `reference` is explicitly non-AI test mode |
+| `OTW_BEDROCK_ENDPOINT` | `mantle` for the selected Qwen model; defaults to `runtime` for existing installations |
+| `OTW_BEDROCK_MANTLE_PROJECT_ID` | `default` initially; must match the authorized Mantle project |
 | `OTW_BEDROCK_MODEL_ID` | Explicit accessible model/inference-profile ID |
 | `OTW_AGENT_TIMEOUT_SECONDS` | `120` initially |
 | `OTW_WORKER_LEASE_SECONDS` | `180` initially, longer than the inference timeout plus commit allowance |

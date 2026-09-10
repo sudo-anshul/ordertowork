@@ -92,7 +92,13 @@ def release_config(
         OTW_AWS_REGION=host["region"],
         OTW_DEMO_ENABLED="true" if enable_demo else "false",
     )
-    settings.setdefault("OTW_BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")
+    settings.setdefault("OTW_BEDROCK_ENDPOINT", "runtime")
+    settings.setdefault(
+        "OTW_BEDROCK_MODEL_ID",
+        "qwen.qwen3-235b-a22b-2507"
+        if settings["OTW_BEDROCK_ENDPOINT"] == "mantle"
+        else "us.amazon.nova-lite-v1:0",
+    )
     if settings.get("OTW_S3_BUCKET") != services["resource_names"]["bucket"]:
         raise ValueError("Runtime bucket differs from the prepared services bucket")
     with tempfile.TemporaryDirectory(prefix="otw-release-config-") as temporary:

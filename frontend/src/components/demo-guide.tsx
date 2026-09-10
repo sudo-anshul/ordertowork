@@ -47,8 +47,13 @@ export function DemoGuide() {
         </ol>
         <p>
           Your sample data is private to this session. Switch businesses to explore both examples.
-          Saved analysis uses reference rules; new AI requests depend on service availability (
-          {session.demo.max_agent_jobs_per_workspace} per business).
+          The prepared proposals use reference rules; opening them makes no AI call. To try a new
+          check, choose <strong>Add customer message</strong> and enter a fictional request. Open
+          its execution record to see the model, tool checks and token usage.
+        </p>
+        <p>
+          Up to {session.demo.max_agent_jobs_per_workspace} new analysis attempts per business,
+          including retries, subject to service availability.
         </p>
       </div>
     </details>

@@ -31,6 +31,15 @@ def analysis_failure_message(exc: Exception) -> str:
         PartialCredentialsError,
         TokenRetrievalError,
     )
+    from openai import (
+        APIConnectionError,
+        APITimeoutError,
+        AuthenticationError,
+        BadRequestError,
+        NotFoundError,
+        PermissionDeniedError,
+        RateLimitError,
+    )
     from strands.types.exceptions import MaxTokensReachedException, ModelThrottledException
 
     if isinstance(exc, (AgentBudgetExceeded, MaxTokensReachedException)):
@@ -60,6 +69,16 @@ def analysis_failure_message(exc: Exception) -> str:
             return "AWS credentials are unavailable or expired. Reauthenticate the worker's AWS profile."
         if isinstance(cause, ModelThrottledException):
             return "Bedrock is temporarily rate limited. Wait before retrying the analysis."
+        if isinstance(cause, (AuthenticationError, PermissionDeniedError)):
+            return "AWS denied model access. Check the worker role, Mantle project and model availability."
+        if isinstance(cause, RateLimitError):
+            return "Bedrock is temporarily rate limited. Wait before retrying the analysis."
+        if isinstance(cause, (BadRequestError, NotFoundError)):
+            return "Bedrock could not use the configured model. Check its endpoint, model ID and region."
+        if isinstance(cause, APITimeoutError):
+            return "Analysis timed out. Your accepted order is unchanged; retry when the service is available."
+        if isinstance(cause, APIConnectionError):
+            return "The worker could not reach Bedrock. Retry when the service is available."
         if isinstance(cause, ClientError):
             code = cause.response.get("Error", {}).get("Code")
             if code in ("ExpiredToken", "ExpiredTokenException", "UnrecognizedClientException"):

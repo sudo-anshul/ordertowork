@@ -17,8 +17,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Evidence(BaseModel):
-    field: str = Field(max_length=80)
-    quote: str = Field(max_length=1000)
+    field: str = Field(min_length=1, max_length=80, description="Name of the extracted field")
+    quote: str = Field(
+        min_length=1,
+        max_length=1000,
+        description="Exact contiguous quote from the latest customer message",
+    )
 
 
 class RequestInterpretation(BaseModel):
@@ -286,6 +290,14 @@ business policies. Report uncertainty through missing_fields. Use intent cancell
 for requests to cancel, which must be reviewed by the owner. You have no mutation tool.
 For approval, cancellation, questions or incomplete requests, return the appropriate
 intent and missing_fields directly, without pretending a change is authorized.
+
+Output format: evidence is an array of objects with field and quote keys, for example
+{"field":"quantity","quote":"Make it 36"}. Copy quotes exactly; do not paraphrase,
+combine separate phrases, or quote baseline/tool facts as customer statements.
+missing_fields is always an array of strings; use [] when nothing is missing, never null.
+Final size quantities include ALL unchanged sizes. Copy an unchanged pickup timestamp
+exactly from baseline_terms. Resolve missing customer details BEFORE preview_change:
+if a quantity change lacks its size breakdown, return missing_fields without a preview.
 """
 
 
@@ -295,6 +307,37 @@ class AgentBudgetExceeded(RuntimeError):
 
 class AgentContextTooLarge(RuntimeError):
     """The current order cannot fit within the configured low-cost review workflow."""
+
+
+def validate_interpretation(
+    review: RequestInterpretation, context: dict, message: str
+) -> RequestInterpretation:
+    """Route inconsistent extracted facts to review before any proposal is created."""
+    missing = list(review.missing_fields)
+    if any(e.quote not in message for e in review.evidence):
+        missing.append(
+            "Some extracted evidence could not be matched to the message. Owner review is required."
+        )
+    if review.intent not in ("change_request", "new_order"):
+        review.missing_fields = missing[:20]
+        return review
+    if not review.evidence:
+        missing.append("The requested changes need exact source quotes for owner review.")
+    baseline = context["order"]["baseline_terms"]
+    quantity = review.quantity if review.quantity is not None else baseline.get("quantity")
+    sizes = review.sizes if review.sizes is not None else baseline.get("sizes", {})
+    if baseline.get("sizes") and (not sizes or sum(sizes.values()) != quantity):
+        missing.append("Confirm exact size quantities that add up to the requested total.")
+    if review.pickup_at:
+        try:
+            pickup = datetime.fromisoformat(review.pickup_at)
+            zone = ZoneInfo(context["workspace"]["timezone"])
+            if pickup.tzinfo is None or pickup.utcoffset() != pickup.astimezone(zone).utcoffset():
+                raise ValueError("Business timezone offset mismatch")
+        except (ValueError, KeyError):
+            missing.append("Confirm the pickup date and time in the business timezone.")
+    review.missing_fields = list(dict.fromkeys(missing))[:20]
+    return review
 
 
 def compact_order_context(snapshot: dict) -> dict:
@@ -336,12 +379,11 @@ async def interpret_with_strands(
     *,
     received_at: datetime | None = None,
 ) -> RequestInterpretation:
-    from botocore.config import Config
     from ordertowork.db import utcnow
+    from ordertowork.services.bedrock import create_bedrock_model
     from ordertowork.services.orders import order_snapshot
     from ordertowork.services.orders import preview_change as domain_preview
     from strands import Agent, tool
-    from strands.models import BedrockModel
     from strands.session import SnapshotSessionManager
     from strands.storage import LocalFileStorage, S3Storage
 
@@ -393,17 +435,7 @@ async def interpret_with_strands(
         directory.mkdir(parents=True, exist_ok=True)
         storage = LocalFileStorage(str(directory))
     agent = Agent(
-        model=BedrockModel(
-            model_id=settings.bedrock_model_id,
-            region_name=settings.aws_region,
-            max_tokens=settings.bedrock_max_output_tokens,
-            temperature=0,
-            boto_client_config=Config(
-                connect_timeout=5,
-                read_timeout=min(60, settings.agent_timeout_seconds),
-                retries={"mode": "standard", "total_max_attempts": 2},
-            ),
-        ),
+        model=create_bedrock_model(settings),
         system_prompt=SYSTEM_PROMPT,
         tools=[read_order_context, preview_change],
         structured_output_model=RequestInterpretation,
@@ -412,8 +444,8 @@ async def interpret_with_strands(
             storage=storage,
             save_latest_on="invocation",
         ),
-        # Boto already retries transient requests once. Avoid multiplying that by
-        # the SDK's default six model attempts; explicit job retries remain bounded.
+        # Provider retries are bounded in create_bedrock_model. Do not multiply
+        # them by the SDK's default six model attempts.
         retry_strategy=None,
         callback_handler=None,
     )
@@ -453,6 +485,7 @@ async def interpret_with_strands(
                 "input": {},
                 "result": {
                     "model_id": settings.bedrock_model_id,
+                    "endpoint": settings.bedrock_endpoint,
                     "input_tokens": usage.get("inputTokens", 0),
                     "output_tokens": usage.get("outputTokens", 0),
                     "total_tokens": usage.get("totalTokens", 0),
@@ -466,14 +499,9 @@ async def interpret_with_strands(
         raise AgentBudgetExceeded(result.stop_reason)
     if result.stop_reason == "interrupt" or result.structured_output is None:
         raise RuntimeError("Model did not complete a structured review")
-    review = RequestInterpretation.model_validate(result.structured_output)
-    if any(e.quote not in message for e in review.evidence):
-        review.missing_fields = (
-            review.missing_fields
-            + [
-                "Some extracted evidence could not be matched to the message. Owner review is required."
-            ]
-        )[:20]
+    review = validate_interpretation(
+        RequestInterpretation.model_validate(result.structured_output), context, message
+    )
     if review.intent in ("change_request", "new_order") and not review.missing_fields:
         terms = {**context["order"]["baseline_terms"], **review.model_dump(exclude_none=True)}
         requested = {

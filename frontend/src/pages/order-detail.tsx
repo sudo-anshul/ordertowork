@@ -658,6 +658,7 @@ function AnalysisStatus({
   owner: boolean;
   onComplete: () => void;
 }) {
+  const { session } = useAuth();
   const path = `/workspaces/${workspaceId}/jobs/${job.id}`;
   const { data, error, loading, refresh } = useApi<AnalysisJob>(path, {
     pollMs: ['queued', 'running'].includes(job.status) ? 1500 : undefined,
@@ -682,30 +683,39 @@ function AnalysisStatus({
     );
   if (current.status === 'failed')
     return (
-      <Notice tone="warning" title="This message needs another check.">
-        <p>
-          {current.error ||
-            current.error_message ||
-            'Analysis did not finish. The saved message and accepted order are unchanged.'}
-        </p>
-        {owner && (
-          <Button
-            busy={action.pending}
-            onClick={() =>
-              void action.run(
-                () => post<AnalysisJob>(`${path}/retry`),
-                async () => {
-                  await refresh();
-                  onComplete();
-                },
-              )
-            }
-          >
-            <RefreshCw size={15} /> Retry analysis
-          </Button>
-        )}
-        <ErrorNotice message={action.error} />
-      </Notice>
+      <>
+        <Notice tone="warning" title="This message needs another check.">
+          <p>
+            {current.error ||
+              current.error_message ||
+              'Analysis did not finish. The saved message and accepted order are unchanged.'}
+          </p>
+          {session?.auth_method === 'demo' && (
+            <p>
+              You can keep exploring the prepared example. Retrying uses another analysis attempt
+              from this business’s demo allowance.
+            </p>
+          )}
+          {owner && (
+            <Button
+              busy={action.pending}
+              onClick={() =>
+                void action.run(
+                  () => post<AnalysisJob>(`${path}/retry`),
+                  async () => {
+                    await refresh();
+                    onComplete();
+                  },
+                )
+              }
+            >
+              <RefreshCw size={15} /> Retry analysis
+            </Button>
+          )}
+          <ErrorNotice message={action.error} />
+        </Notice>
+        {owner && <AnalysisEvidence job={current} />}
+      </>
     );
   if (['queued', 'running'].includes(current.status))
     return (
@@ -755,9 +765,10 @@ function MessageComposer({
         </p>
         {session?.auth_method === 'demo' && session.demo && (
           <Notice title="Try a fictional customer request.">
-            This demo allows {session.demo.max_agent_jobs_per_workspace} AI requests per business,
-            subject to service availability. The saved example remains available if a new check
-            cannot run.
+            This demo allows {session.demo.max_agent_jobs_per_workspace} analysis attempts per
+            business, including retries, subject to service availability. After the check, open its
+            execution record to inspect the model and tool results. The prepared example remains
+            available if a new check cannot run.
           </Notice>
         )}
         <Field

@@ -22,6 +22,8 @@ REQUIRED = {
     "OTW_BEDROCK_MODEL_ID",
 }
 OPTIONAL = {
+    "OTW_BEDROCK_ENDPOINT",
+    "OTW_BEDROCK_MANTLE_PROJECT_ID",
     "OTW_COGNITO_CLIENT_SECRET",
     "OTW_PLATFORM_ADMIN_SUBJECTS",
     "OTW_SESSION_HOURS",
@@ -51,6 +53,8 @@ FIXED = {
     "AWS_EC2_METADATA_DISABLED": "false",
 }
 DEFAULTS = {
+    "OTW_BEDROCK_ENDPOINT": "runtime",
+    "OTW_BEDROCK_MANTLE_PROJECT_ID": "default",
     "OTW_SESSION_HOURS": "12",
     "OTW_PLATFORM_ADMIN_SUBJECTS": "",
     "OTW_MAX_DAILY_AGENT_JOBS": "20",
@@ -117,6 +121,12 @@ def load_config(path: Path) -> dict[str, str]:
         raise ValueError("OTW_COGNITO_DOMAIN must be an HTTPS origin")
     values["OTW_COGNITO_DOMAIN"] = values["OTW_COGNITO_DOMAIN"].rstrip("/")
     resolved = DEFAULTS | values
+    if resolved["OTW_BEDROCK_ENDPOINT"] not in {"runtime", "mantle"}:
+        raise ValueError("OTW_BEDROCK_ENDPOINT must be runtime or mantle")
+    if not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", resolved["OTW_BEDROCK_MANTLE_PROJECT_ID"]
+    ):
+        raise ValueError("OTW_BEDROCK_MANTLE_PROJECT_ID must be a project identifier")
     for key in (
         "OTW_SESSION_HOURS",
         "OTW_MAX_DAILY_AGENT_JOBS",

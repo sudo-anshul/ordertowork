@@ -13,6 +13,7 @@ import boto3
 from aws_services import owned, write_manifest
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from mantle_policy import DEFAULT_MODEL, mantle_policy
 
 
 def launch_instance(ec2, **parameters):
@@ -46,6 +47,20 @@ def main():
             "This priced host setup is limited to us-east-1; recheck costs before changing"
         )
     bucket = services["resource_names"]["bucket"]
+    app_env = services.get("app_env", {})
+    endpoint = app_env.get("OTW_BEDROCK_ENDPOINT", "runtime")
+    if endpoint not in {"runtime", "mantle"}:
+        parser.error("OTW_BEDROCK_ENDPOINT must be runtime or mantle")
+    mantle_statements = (
+        mantle_policy(
+            account,
+            region,
+            app_env.get("OTW_BEDROCK_MODEL_ID", DEFAULT_MODEL),
+            app_env.get("OTW_BEDROCK_MANTLE_PROJECT_ID", "default"),
+        )["Statement"]
+        if endpoint == "mantle"
+        else None
+    )
     session = boto3.Session(profile_name=args.profile, region_name=region)
     sdk = Config(connect_timeout=5, read_timeout=30, retries={"total_max_attempts": 3})
     if session.client("sts", config=sdk).get_caller_identity()["Account"] != account:
@@ -162,6 +177,8 @@ def main():
             },
         ],
     }
+    if mantle_statements:
+        policy["Statement"][:1] = mantle_statements
     iam.put_role_policy(
         RoleName=role_name, PolicyName="OrderToWorkRuntime", PolicyDocument=json.dumps(policy)
     )

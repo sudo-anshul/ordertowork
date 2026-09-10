@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +29,8 @@ class Settings(BaseSettings):
     agent_mode: str = "bedrock"
     aws_region: str = "us-east-1"
     bedrock_model_id: str = ""
+    bedrock_endpoint: Literal["runtime", "mantle"] = "runtime"
+    bedrock_mantle_project_id: str = Field(default="default", pattern=r"^[a-zA-Z0-9_-]{1,128}$")
     bedrock_max_output_tokens: int = Field(default=1024, ge=256, le=4096)
     agent_max_turns: int = Field(default=5, ge=2, le=10)
     agent_max_total_tokens: int = Field(default=18000, ge=2000, le=50000)

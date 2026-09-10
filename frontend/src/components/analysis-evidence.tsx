@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, CircleAlert } from 'lucide-react';
 import type { Analysis, AnalysisJob } from '../lib/types';
 import { money, titleCase } from '../lib/format';
 import { Badge } from './ui';
@@ -33,6 +33,12 @@ export function AnalysisEvidence({
   analysis?: Analysis | null;
 }) {
   const events = job.tool_events ?? [];
+  const usage = record(
+    [...events].reverse().find((event) => event.tool === 'bedrock_usage')?.result,
+  );
+  const modelId = typeof usage.model_id === 'string' ? usage.model_id : null;
+  const modelName = modelId === 'qwen.qwen3-235b-a22b-2507' ? 'Qwen3 235B' : modelId;
+  const provider = usage.endpoint === 'mantle' ? 'Bedrock Mantle' : 'Bedrock';
   const quotes = sourceQuotes(analysis?.evidence);
   const labels: Record<string, string> = {
     read_order_context: 'Read order facts',
@@ -42,7 +48,7 @@ export function AnalysisEvidence({
   };
   const mode =
     job.mode === 'bedrock'
-      ? 'Strands + Bedrock'
+      ? `Strands + ${provider}${modelName ? ` · ${modelName}` : ''}`
       : job.mode === 'reference'
         ? 'Deterministic reference'
         : 'Mode not recorded';
@@ -65,7 +71,7 @@ export function AnalysisEvidence({
           {job.mode === 'reference'
             ? 'This run used deterministic reference interpretation. No AI model was called.'
             : job.mode === 'bedrock'
-              ? 'This run was configured for Strands with Bedrock. The record below shows tool checks and any reported AI usage.'
+              ? `This run was configured for Strands with ${provider}. The model interprets the message; server tools check order facts, stock, capacity and price. The events below show what ran. Owner review and customer approval still control changes.`
               : 'The server did not record the execution mode for this run.'}
         </p>
         {events.length ? (
@@ -90,6 +96,12 @@ export function AnalysisEvidence({
                     )}
                     {event.tool === 'bedrock_usage' && (
                       <>
+                        {typeof result.model_id === 'string' && (
+                          <p>
+                            Model: <code>{result.model_id}</code>
+                            {result.endpoint === 'mantle' && ' · Bedrock Mantle'}
+                          </p>
+                        )}
                         <p>
                           {typeof result.input_tokens === 'number'
                             ? result.input_tokens.toLocaleString()
@@ -136,7 +148,11 @@ export function AnalysisEvidence({
                       </ul>
                     )}
                   </div>
-                  <Check size={14} aria-hidden="true" />
+                  {event.tool === 'bedrock_usage' && result.usage_complete === false ? (
+                    <CircleAlert size={14} aria-label="Incomplete usage record" />
+                  ) : (
+                    <Check size={14} aria-hidden="true" />
+                  )}
                 </li>
               );
             })}

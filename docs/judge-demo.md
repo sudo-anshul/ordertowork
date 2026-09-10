@@ -2,7 +2,13 @@
 
 The landing page offers **Try the live demo** alongside the normal business sign-in. Demo entry creates an anonymous application session and two isolated, synthetic workspaces: merchandise and bakery. It opens a sample order directly, with no Cognito account, password, email or setup required. Cognito remains mandatory for business accounts in production.
 
-The prepared order contains an accepted baseline, a sample customer change and saved example proposals. These are labeled synthetic; opening the example makes no model call. A judge can inspect constraints, share a revised proposal, open the customer approval page, record a sample deposit and produce a production ticket. New analysis uses the configured agent provider and reports provider failures honestly. The saved example remains usable while Bedrock account verification is pending.
+The prepared order contains an accepted baseline, a sample customer change and saved example proposals. These are labeled synthetic; opening the example makes no model call. A judge can inspect constraints, share a revised proposal, open the customer approval page, record a sample deposit and produce a production ticket. New analysis uses the configured agent provider and reports provider failures honestly. The saved example remains usable if new inference is unavailable or the demo allowance has been reached.
+
+## Try a live agent run
+
+Choose **Add customer message** on a sample order and enter a fictional request. Saving starts a fresh analysis; opening the prepared proposals does not. After completion, expand **Request check complete** to inspect the model and provider recorded by the server, the Strands tool checks, token usage, source evidence and any missing details. Failed runs retain an execution record when available and do not count as a completed analysis.
+
+The selected live provider is **Qwen3 235B A22B 2507** (`qwen.qwen3-235b-a22b-2507`) through **AWS Bedrock Mantle**, using the Strands OpenAI-compatible model adapter. The execution record identifies the actual model used per run rather than inferring it from deployment configuration. The model interprets text; deterministic server tools check prices, resources and order constraints. File attachments do not undergo image interpretation. The owner reviews proposals and the customer approves an exact revision before production can proceed.
 
 ## Isolation and lifetime
 

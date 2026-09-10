@@ -15,6 +15,7 @@ def integrated(monkeypatch, tmp_path):
         "OTW_AUTH_MODE": "development",
         "OTW_APP_URL": "http://localhost:5173",
         "OTW_AGENT_MODE": "reference",
+        "OTW_BEDROCK_ENDPOINT": "runtime",
         "OTW_STORAGE_MODE": "local",
         "OTW_DATA_DIR": str(tmp_path / "data"),
     }.items():

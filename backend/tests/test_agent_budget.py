@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+import pytest
 from ordertowork.config import get_settings
 from ordertowork.db import session_factory, utcnow
 from ordertowork.models.jobs import AgentDailyUsage, Job
@@ -24,8 +25,10 @@ def test_daily_budget_resets_by_utc_day_and_zero_disables(integrated, monkeypatc
         assert not jobs.reserve_bedrock_attempt(db)
 
 
-def test_expired_lease_consumes_budget_and_new_workspace_cannot_reset_it(integrated):
+@pytest.mark.parametrize("endpoint", ["runtime", "mantle"])
+def test_expired_lease_consumes_budget_and_new_workspace_cannot_reset_it(integrated, endpoint):
     settings = get_settings()
+    settings.bedrock_endpoint = endpoint
     settings.agent_mode = "bedrock"
     settings.max_daily_bedrock_attempts = 2
     client = integrated.client
