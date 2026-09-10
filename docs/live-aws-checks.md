@@ -1,5 +1,7 @@
 # Live AWS verification
 
+For the deployed submission model, use the [hosted Qwen/Mantle check](live-mantle-checks.md). The optional Nova check below is retained for the separate Bedrock-runtime integration; it is not the model used by the live submission.
+
 `deploy/live_smoke.py` exercises the application's real private S3 upload and download path while every user, workspace, order, job and session lives in a new temporary SQLite database. It does not connect to the hosted database or read repository `.env` settings. It creates two explicitly synthetic workspaces with different localhost test owners. Those identities are unverified development fixtures, not Cognito accounts.
 
 Run the storage check from the repository after authenticating a local AWS profile and creating the private application bucket:

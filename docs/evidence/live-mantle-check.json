@@ -1,0 +1,64 @@
+{
+  "checked_at": "2026-09-10T19:56:44.342590+00:00",
+  "status": "passed",
+  "analysis_submissions": 2,
+  "businesses": [
+    {
+      "profile": "merchandise",
+      "status": "passed",
+      "checks": [
+        "live_mantle_model_and_tools",
+        "accepted_revision_unchanged",
+        "new_requested_and_feasible_proposals",
+        "exact_revision_customer_approval",
+        "sample_deposit_ticket_and_production"
+      ],
+      "job_status": "succeeded",
+      "usage": {
+        "model_id": "qwen.qwen3-235b-a22b-2507",
+        "endpoint": "mantle",
+        "input_tokens": 6850,
+        "output_tokens": 274,
+        "total_tokens": 7124,
+        "model_calls": 2
+      },
+      "missing_details_count": 0,
+      "requested_quantity": 45,
+      "new_feasible_proposals": 2,
+      "sample_deposit_recorded": true
+    },
+    {
+      "profile": "bakery",
+      "status": "passed",
+      "checks": [
+        "live_mantle_model_and_tools",
+        "accepted_revision_unchanged",
+        "new_requested_and_feasible_proposals",
+        "exact_revision_customer_approval",
+        "sample_deposit_ticket_and_production"
+      ],
+      "job_status": "succeeded",
+      "usage": {
+        "model_id": "qwen.qwen3-235b-a22b-2507",
+        "endpoint": "mantle",
+        "input_tokens": 5953,
+        "output_tokens": 255,
+        "total_tokens": 6208,
+        "model_calls": 2
+      },
+      "missing_details_count": 0,
+      "requested_quantity": 36,
+      "new_feasible_proposals": 2,
+      "sample_deposit_recorded": true
+    }
+  ],
+  "plan": [
+    "Create one new isolated guest session; verify both workspaces and orders are synthetic.",
+    "Submit each seeded message once; poll up to 120 seconds per job, with no retries.",
+    "Require live Qwen via Mantle, positive usage, tools and unchanged accepted terms.",
+    "Approve a new feasible proposal; record sample deposit; verify ticket and start work.",
+    "Log out in finally. Never record credentials, customer links or raw API bodies."
+  ],
+  "origin": "https://34-230-185-63.sslip.io",
+  "guest_logout_succeeded": true
+}

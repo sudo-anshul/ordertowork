@@ -1,11 +1,19 @@
 # Implementation verification
 
-Local verification was expanded on 10 September 2026. Development uses PostgreSQL 17, a real FastAPI service and worker, and the React interface. AWS service configuration is now available; see the separate [live provider verification procedure](live-aws-checks.md). The checks below do not establish Bedrock access or model accuracy.
+The Mantle integration was verified on 11 September 2026 (Asia/Kolkata). Development uses PostgreSQL 17, a real FastAPI service and worker, and the React interface.
+
+## Live Mantle release
+
+Release `8359467` passed [GitHub CI](https://github.com/sudo-anshul/ordertowork/actions/runs/34523061040) and the local ARM container checks. On the deployed HTTPS app, two new guest analyses used `qwen.qwen3-235b-a22b-2507` through Bedrock Mantle and the server's scoped IAM role. Each completed with two model calls, database-context and preview tools, no missing details, and two new feasible alternatives. The test then completed exact customer approval, sample deposit recording, ticket generation and production start for both profiles. Accepted commitments stayed unchanged until explicit customer approval. The guest session was logged out.
+
+The two analyses reported 12,803 input and 529 output tokens combined, approximately $0.00328 at the catalog prices observed during model selection. This is an estimate from reported usage, not an AWS invoice or remaining-credit balance. See [sanitized live evidence](evidence/live-mantle-check.json) and [reproduction instructions](live-mantle-checks.md). Tests use synthetic data; no real payment is taken, and no customer-adoption or model-accuracy claim follows from these fixtures.
+
+A separate browser check submitted the merchandise request after the obsolete Nova role grant was removed. The live page showed success, the Qwen/Mantle model identity, database-context and constraint checks, and 6,794 input / 303 output tokens. The expanded record fit the 390px viewport without horizontal document overflow. See the [live execution screenshot](screenshots/live-agent.png). The only console error was the expected anonymous `/api/auth/me` 401 at entry; no JavaScript runtime error was observed.
 
 ## Automated application checks
 
-- **94 backend tests passed** with `OTW_TEST_DATABASE_URL` configured.
-- Seven of these use actual PostgreSQL: a competing-approval race, three scheduler/lease concurrency cases, an atomic global paid-run budget race, and complete HTTP-to-worker-to-production flows for both business profiles. They use temporary schemas and remove their own test data.
+- **140 backend/deployment tests passed** with `OTW_TEST_DATABASE_URL` configured.
+- PostgreSQL checks cover approval races, scheduler/lease concurrency, paid-run and guest-budget races, expiry, and complete HTTP-to-worker-to-production flows. They use temporary schemas and remove their own test data.
 - Remaining tests use isolated databases and cover identity, CSRF/origin checks, tenant and role boundaries, final-owner protection, stale proposals, exact approval, manual-deposit idempotency, production gates, attachment access and conservative reference interpretation.
 - The Strands SDK integration test uses a scripted model with real application tools and structured output. This verifies the SDK/tool contract, not Bedrock access or model accuracy.
 - Added checks cover bounded Strands turns/tokens, independent session snapshots, exact final previews, partial usage telemetry, live-provider error handling, SigV4 storage contracts and actual Cognito HTTP request serialization with mocked provider transport.
@@ -16,7 +24,7 @@ The test suite emits one upstream Starlette/AnyIO deprecation warning. No test f
 
 ## Browser acceptance
 
-The following checks used the running app and persisted PostgreSQL data; workflow responses were not mocked:
+The following earlier browser checks (10 September) used the running app and persisted PostgreSQL data; workflow responses were not mocked:
 
 | Flow | Observed result |
 |---|---|

@@ -6,7 +6,9 @@ A workbench for made-to-order businesses. Turn a customer request into a checked
 
 OrderToWork keeps the existing commitment intact while a change is explored. A Strands agent interprets the message and calls scoped tools for order facts, prices, stock and capacity. The application rechecks availability under database locks when the customer approves. An agent cannot accept an order, take money or release production.
 
-The complete local app runs without AWS credentials. Its default **reference mode is a limited deterministic interpreter, not live AI**. The real Strands/Bedrock path is implemented and covered with a scripted model integration test; live Bedrock, Cognito and S3 validation requires an AWS account and is still pending.
+**[Try the live demo](https://34-230-185-63.sslip.io)** — no sign-up required. Each visitor receives private, temporary sample workspaces. Prepared examples make no model call; **Add customer message** runs the real Strands agent using **Qwen3 235B on Amazon Bedrock Mantle**.
+
+The deployed merchandise and bakery workflows have been verified through live model analysis, checked proposals, customer approval, sample deposit recording and production start. See the [live verification record](docs/evidence/live-mantle-check.json). The complete local app also runs without AWS credentials: its default **reference mode is a limited deterministic interpreter, not live AI**.
 
 ## What works
 
@@ -82,9 +84,11 @@ GitHub Actions runs backend checks with PostgreSQL, the frontend build and a com
 
 The app includes a non-root production Docker image, Cognito OAuth code/PKCE sign-in, Bedrock through Strands, private S3 storage, IAM examples and an [AWS deployment runbook](deploy/README.md). The same image runs the API and the worker as separate services. Production serves the built React app from FastAPI behind an HTTPS endpoint.
 
+The submission uses `OTW_AGENT_MODE=bedrock`, `OTW_BEDROCK_ENDPOINT=mantle`, and `OTW_BEDROCK_MODEL_ID=qwen.qwen3-235b-a22b-2507`. Strands' OpenAI-compatible provider connects to AWS, with short-lived tokens generated from the worker's IAM role. No separate OpenAI API key is needed. See [Mantle setup and scoped permissions](deploy/mantle-README.md). Local live inference requires your own authenticated AWS credentials and model access; reference mode remains the default for an offline walkthrough.
+
 For the $50 hackathon allowance, use the [single-host deployment](deploy/budget-README.md) and [AWS service setup](docs/aws-services.md). They provide Cognito, private S3, an account cost budget and one small ARM server running PostgreSQL, the API and the worker. The managed ECS/RDS topology is a later option with substantially higher idle costs.
 
-Live verification is documented separately from configuration in [AWS checks](docs/live-aws-checks.md). Bedrock requires AWS account verification and model access even after credits are redeemed. A failed model call remains a failed analysis; the app does not silently replace it with reference interpretation.
+Live verification is documented separately from configuration in [the hosted Mantle check](docs/live-mantle-checks.md) and [storage/Cognito checks](docs/live-aws-checks.md). Model access varies by AWS account and endpoint. A failed model call remains a failed analysis; the app does not silently replace it with reference interpretation.
 
 Paid jobs have a global daily attempt allowance across all workspaces, including retries. `OTW_MAX_DAILY_BEDROCK_ATTEMPTS=0` pauses paid work. Per-run output, turn and token limits reduce exposure; the token limit is checked between turns and is not an AWS dollar spending cap. The execution record displays reported input/output tokens.
 
