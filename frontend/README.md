@@ -25,6 +25,8 @@ An analysis request saves its source and polls the persisted job. Reference mode
 
 Sample workspaces and orders are labeled. The frontend contains no local simulated order transitions. File uploads are stored as attachments and do not claim document extraction. Failed operations preserve entered form values and display the server error.
 
+When the backend enables guest demos, the landing page offers **Try the live demo** alongside business sign-in. A server-created guest session opens its first prepared order without credentials or setup. The demo guide explains the workflow, the session expiry, and the distinction between saved reference analysis and new AI requests. Guest controls expose prepared-order review, customer approval, sample deposit recording, and production; business setup, team/rule editing, new orders, resource editing, and uploads remain unavailable. The backend independently enforces these restrictions. Expired sessions return to the landing page with a fresh-demo prompt.
+
 ## Verification
 
 `npm run build` performs strict TypeScript checking and creates the production bundle. Backend invariants and role isolation are covered by the repository's backend tests. The root integration workflow performs browser acceptance checks against the running API; a successful build alone is not a claim of complete browser or accessibility coverage.

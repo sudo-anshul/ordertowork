@@ -21,10 +21,16 @@ export interface Session {
   user: User;
   workspaces: Workspace[];
   csrf_token: string;
+  auth_method: 'demo' | 'cognito' | 'development';
+  demo: {
+    expires_at: string;
+    max_agent_jobs_per_workspace: number;
+  } | null;
 }
 export interface AuthConfig {
   auth_mode: 'development' | 'cognito';
   development_login_enabled: boolean;
+  demo_enabled: boolean;
   login_url: string | null;
   configured: boolean;
 }

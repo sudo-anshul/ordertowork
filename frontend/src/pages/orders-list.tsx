@@ -2,6 +2,7 @@ import { ArrowRight, Check, ClipboardCheck, Filter, Inbox, Plus, Search } from '
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useWorkspace } from '../lib/workspace';
+import { useAuth } from '../lib/auth';
 import { OrderBadge, ProductMark, statusLabels } from '../components/orders';
 import { Badge, EmptyState, ErrorNotice, Loading, PageIntro, Panel } from '../components/ui';
 import { dateTime, money } from '../lib/format';
@@ -21,6 +22,7 @@ function orderDescription(order: OrderSummary) {
 }
 
 export function DecisionsPage() {
+  const { session } = useAuth();
   const workspace = useWorkspace();
   const { data, loading, error, refresh } = useApi<{ orders: OrderSummary[] }>(
     `/workspaces/${workspace.id}/orders`,
@@ -110,7 +112,7 @@ export function DecisionsPage() {
               icon={<Inbox size={30} strokeWidth={1.3} />}
               title={orders.length ? 'No decisions waiting.' : 'A clear start for your next order.'}
               action={
-                owner ? (
+                owner && session?.auth_method !== 'demo' ? (
                   <Link className="button button-primary" to={`/w/${workspace.id}/orders/new`}>
                     <Plus size={16} /> Create an order
                   </Link>
@@ -197,6 +199,7 @@ export function DecisionsPage() {
 }
 
 export function OrdersPage({ production = false }: { production?: boolean }) {
+  const { session } = useAuth();
   const workspace = useWorkspace();
   const { data, loading, error, refresh } = useApi<{ orders: OrderSummary[] }>(
     `/workspaces/${workspace.id}/orders`,
@@ -221,7 +224,7 @@ export function OrdersPage({ production = false }: { production?: boolean }) {
             : 'Every order has a clear commitment.'
         }
         actions={
-          workspace.role === 'owner' && !production ? (
+          workspace.role === 'owner' && !production && session?.auth_method !== 'demo' ? (
             <Link className="button button-primary" to={`/w/${workspace.id}/orders/new`}>
               <Plus size={17} /> New order
             </Link>
@@ -326,7 +329,7 @@ export function OrdersPage({ production = false }: { production?: boolean }) {
               <Link to={`/w/${workspace.id}/orders`} className="button button-secondary">
                 View outstanding conditions <ArrowRight size={16} />
               </Link>
-            ) : workspace.role === 'owner' ? (
+            ) : workspace.role === 'owner' && session?.auth_method !== 'demo' ? (
               <Link className="button button-primary" to={`/w/${workspace.id}/orders/new`}>
                 <Plus size={16} /> Create an order
               </Link>

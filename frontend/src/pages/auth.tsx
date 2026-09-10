@@ -5,35 +5,76 @@ import {
   KeyRound,
   LogOut,
   MessageSquareText,
+  Play,
   ShieldCheck,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { post } from '../lib/api';
+import { api, ApiError, post } from '../lib/api';
 import { useAction } from '../lib/hooks';
-import type { Session, Workspace } from '../lib/types';
+import type { OrderSummary, Session, Workspace } from '../lib/types';
 import { Badge, Brand, Button, ErrorNotice, Field, Loading, Notice } from '../components/ui';
 import { RuntimeBar } from '../components/layout';
 
 export function LoginPage() {
-  const { config, session, loading, error, refresh, acceptSession } = useAuth();
+  const { config, session, loading, error, sessionNotice, refresh, acceptSession } = useAuth();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [destination, setDestination] = useState('/');
   const action = useAction();
-  const navigate = useNavigate();
+  const demoAction = useAction();
   const location = useLocation();
+  useEffect(() => {
+    document.title = 'Welcome · OrderToWork';
+  }, []);
   if (loading) return <Loading label="Getting sign-in ready…" />;
-  if (session) return <Navigate to="/" replace />;
+  if (session) return <Navigate to={destination} replace />;
   const login = (e: FormEvent) => {
     e.preventDefault();
     void action.run(
       () => post<Session>('/auth/development-login', { email, name }),
       (result) => {
+        const requestedDestination = (location.state as { from?: string } | null)?.from;
+        setDestination(requestedDestination?.startsWith('/w/') ? requestedDestination : '/');
         acceptSession(result);
-        const destination = (location.state as { from?: string } | null)?.from;
-        navigate(destination?.startsWith('/w/') ? destination : '/', { replace: true });
+      },
+    );
+  };
+  const startDemo = () => {
+    void demoAction.run(
+      async () => {
+        let result: Session;
+        try {
+          result = await api<Session>('/auth/demo', { method: 'POST' });
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 429) {
+            if (error.code === 'demo_capacity_reached') throw error;
+            throw new Error('The demo has reached its visitor limit. Please try again later.');
+          }
+          if (error instanceof ApiError && error.status === 503)
+            throw new Error('The demo is temporarily unavailable. Please try again shortly.');
+          throw error;
+        }
+        const workspace = result.workspaces[0];
+        let destination = workspace ? `/w/${workspace.id}/decisions` : '/';
+        if (workspace) {
+          try {
+            const { orders } = await api<{ orders: OrderSummary[] }>(
+              `/workspaces/${workspace.id}/orders`,
+            );
+            const order = orders.find((item) => item.is_demo);
+            if (order) destination = `/w/${workspace.id}/orders/${order.id}`;
+          } catch {
+            // A usable session still opens if the first order needs another fetch.
+          }
+        }
+        return { session: result, destination };
+      },
+      (result) => {
+        setDestination(result.destination);
+        acceptSession(result.session);
       },
     );
   };
@@ -76,14 +117,58 @@ export function LoginPage() {
         </div>
         <div className="auth-form">
           <div className="auth-icon">
-            <KeyRound size={24} strokeWidth={1.5} />
+            {config?.demo_enabled ? (
+              <Play size={24} strokeWidth={1.5} />
+            ) : (
+              <KeyRound size={24} strokeWidth={1.5} />
+            )}
           </div>
           <p className="eyebrow">Your workbench</p>
-          <h2>Welcome to OrderToWork.</h2>
+          <h2>
+            {config?.demo_enabled
+              ? 'Good work starts with a clear promise.'
+              : 'Welcome to OrderToWork.'}
+          </h2>
           <p className="muted">
-            Sign in to keep the details, decisions, and next steps in one place.
+            {config?.demo_enabled
+              ? 'Explore the workbench, or sign in to keep your business moving.'
+              : 'Sign in to keep the details, decisions, and next steps in one place.'}
           </p>
           <ErrorNotice message={error} retry={() => void refresh()} />
+          {sessionNotice && <Notice title="Welcome back.">{sessionNotice}</Notice>}
+          {config?.demo_enabled && (
+            <>
+              <section className="demo-entry" aria-labelledby="demo-entry-title">
+                <div className="demo-entry-kicker">
+                  <span className="demo-entry-dot" aria-hidden="true" />A workspace ready to explore
+                </div>
+                <h3 id="demo-entry-title">The customer changed their mind. Now what?</h3>
+                <p>
+                  Compare workable options, get the customer’s approval, and hand the right order to
+                  production.
+                </p>
+                <div className="demo-entry-businesses" aria-label="Included examples">
+                  <span>Merchandise studio</span>
+                  <span>Neighborhood bakery</span>
+                </div>
+                <Button
+                  variant="primary"
+                  className="full-width demo-entry-button"
+                  busy={demoAction.pending}
+                  disabled={action.pending}
+                  onClick={startDemo}
+                >
+                  {demoAction.pending ? 'Preparing your workbench…' : 'Try the live demo'}
+                  {!demoAction.pending && <ArrowRight size={18} />}
+                </Button>
+                <p className="demo-entry-details">No sign-up · Your own sample data · 60 minutes</p>
+                <ErrorNotice message={demoAction.error} title="The demo couldn’t open yet." />
+              </section>
+              <div className="auth-divider">
+                <span>Have a business account?</span>
+              </div>
+            </>
+          )}
           {config?.development_login_enabled ? (
             <>
               <Notice title="Development sign-in" tone="warning">
@@ -117,6 +202,7 @@ export function LoginPage() {
                 <Button
                   variant="primary"
                   busy={action.pending}
+                  disabled={demoAction.pending}
                   type="submit"
                   className="full-width"
                 >
@@ -127,14 +213,16 @@ export function LoginPage() {
           ) : config?.configured && config.login_url ? (
             <div className="section-gap">
               <a
-                className="button button-primary full-width"
+                className={`button button-${config.demo_enabled ? 'secondary' : 'primary'} full-width`}
                 href={`/api${config.login_url.replace(/^\/api/, '')}`}
+                aria-disabled={demoAction.pending || undefined}
+                onClick={(event) => {
+                  if (demoAction.pending) event.preventDefault();
+                }}
               >
-                Sign in securely <ArrowRight size={17} />
+                <KeyRound size={16} /> Sign in to your business <ArrowRight size={17} />
               </a>
-              <p className="field-hint centered">
-                You’ll continue to the configured identity provider.
-              </p>
+              <p className="field-hint centered">Secure sign-in for your business workspace.</p>
             </div>
           ) : (
             <Notice title="Sign-in isn’t configured yet." tone="warning">

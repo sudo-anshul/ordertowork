@@ -1,6 +1,6 @@
 """Explicit business templates and opt-in, clearly marked demonstration data."""
 
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from ordertowork.db import utcnow
@@ -97,8 +97,14 @@ def configure_workspace(db: Session, workspace: Workspace) -> Product:
     return product
 
 
-def seed_workspace(db: Session, workspace: Workspace):
-    """Create canonical synthetic demo order once, inside caller transaction."""
+def seed_workspace(db: Session, workspace: Workspace, *, relative_dates: bool = False):
+    """Seed one synthetic order; guest dates stay usable throughout judging.
+
+    Established development fixtures keep their canonical dates. New guest demos
+    use the next relevant weekday at least four days out, so the scenario never
+    opens with an overdue pickup. Moving the pickup earlier still carries the
+    normal expedited-change fee used in this scenario.
+    """
     if db.scalar(select(Order.id).where(Order.workspace_id == workspace.id).limit(1)):
         return
     product = configure_workspace(db, workspace)
@@ -120,9 +126,17 @@ def seed_workspace(db: Session, workspace: Workspace):
                 else {"S": 12, "M": 30, "L": 30}
             )[resource.details["size"]]
         )
-    dates = (
-        {"2026-09-18": 60, "2026-09-19": 100} if bakery else {"2026-09-17": 32, "2026-09-18": 60}
-    )
+    tz = ZoneInfo(workspace.timezone)
+    requested_day = date(2026, 9, 18 if bakery else 17)
+    if relative_dates:
+        earliest = utcnow().astimezone(tz).date() + timedelta(days=4)
+        weekday = 4 if bakery else 3  # Friday for bakery; Thursday for merchandise.
+        requested_day = earliest + timedelta(days=(weekday - earliest.weekday()) % 7)
+    original_day = requested_day + timedelta(days=1)
+    dates = {
+        requested_day.isoformat(): 60 if bakery else 32,
+        original_day.isoformat(): 100 if bakery else 60,
+    }
     for day, quantity in dates.items():
         resource = _resource(
             db,
@@ -135,12 +149,7 @@ def seed_workspace(db: Session, workspace: Workspace):
             {"date": day},
         )
         resource.total = quantity
-    tz = ZoneInfo(workspace.timezone)
-    from datetime import datetime
-
-    pickup = (
-        datetime(2026, 9, 19, 10, tzinfo=tz) if bakery else datetime(2026, 9, 18, 16, tzinfo=tz)
-    )
+    pickup = datetime.combine(original_day, time(10 if bakery else 16), tzinfo=tz)
     values = {
         "customer_name": "Maya Chen" if bakery else "Field Notes Club",
         "customer_email": None,
@@ -185,15 +194,18 @@ def seed_workspace(db: Session, workspace: Workspace):
         "sample_acceptance",
         "Synthetic fixture: original revision accepted and sample deposit recorded. This is not a real customer agreement or payment.",
     )
+    requested_label = (
+        requested_day.strftime("%A %Y-%m-%d")
+        if relative_dates
+        else ("Friday" if bakery else "Thursday")
+    )
     body = (
-        "Could we make it 36 cupcakes, with the same vanilla flavor and blue icing, and collect Friday at 3 pm instead? Please send the new price before I confirm."
+        f"Could we make it 36 cupcakes, with the same vanilla flavor and blue icing, and collect {requested_label} at 3 pm instead? Please send the new price before I confirm."
         if bakery
-        else "Could we add 15 medium shirts and collect on Thursday at noon instead? Navy if possible. Please tell me the price difference before I confirm."
+        else f"Could we add 15 medium shirts and collect on {requested_label} at noon instead? Navy if possible. Please tell me the price difference before I confirm."
     )
     record_message(db, workspace.id, order.id, body, source="sample")
-    requested_pickup = (
-        datetime(2026, 9, 18, 15, tzinfo=tz) if bakery else datetime(2026, 9, 17, 12, tzinfo=tz)
-    )
+    requested_pickup = datetime.combine(requested_day, time(15 if bakery else 12), tzinfo=tz)
     analyze_change(
         db,
         workspace.id,

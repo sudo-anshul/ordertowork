@@ -2,6 +2,12 @@
 
 All application routes below are prefixed `/api`. Monetary fields are integer cents. ISO datetimes include an offset; the workspace timezone is used for capacity dates. Business routes authenticate via cookie and all mutations require `X-CSRF-Token`. Error `detail` is `{code,message}`. IDs are opaque UUID strings. Public customer links are bearer credentials: never log/store full URLs in analytics.
 
+## Judge demo authentication
+
+`GET /auth/config` includes `demo_enabled`. When enabled, `POST /auth/demo` needs no identity or password and returns the standard session payload plus `auth_method: "demo"` and `demo: {expires_at,max_agent_jobs_per_workspace}`. It creates two isolated sample workspaces, or resumes the caller's active demo session. A valid business session returns 409 `business_session_active`; exhausted daily admission returns 429 `demo_capacity_reached`. Cross-origin entry is rejected. Subsequent guest mutations require the returned CSRF token and session cookie as usual.
+
+Normal sessions expose `demo: null`. Guest workspace objects include `demo_expires_at`; this is independent of `is_demo`. Guest access expires on the server, including customer links and background work. Demo users can exercise seeded order operations but cannot create orders/workspaces, upload files, change resources/settings, manage members or access platform administration. `POST /auth/logout` for a guest returns `logout_url: null`. See [demo limits and deployment](judge-demo.md).
+
 ## Core domain objects
 
 `Terms = {product_id, product_name, quantity, variant, sizes: Record<string,number>, pickup_at, unit_price_cents, subtotal_cents, rush_fee_cents, total_cents, required_deposit_cents, currency, specification: Record<string,string>}`. The backend owns all pricing. Merchandise `variant` is `navy`/`charcoal`, sizes `S,M,L`; bakery `variant` is `vanilla`, sizes `{}`, specification includes `icing: Blue` and `recipe: V1`.
@@ -23,7 +29,7 @@ All application routes below are prefixed `/api`. Monetary fields are integer ce
 - `GET /workspaces/{wid}/orders/{oid}` owner → `OrderDetail`.
 - `POST /workspaces/{wid}/orders/{oid}/messages` owner body `{body,source?:"manual"}` → `{message:{id,body,source,created_at},job:{id,status}}` (202). Saves source and queues analysis; root-owned job API supplies status polling.
 - `POST /workspaces/{wid}/orders/{oid}/proposals` owner body `{product_id?,quantity,variant,sizes?,pickup_at,specification?,label?}` → `OrderDetail`. Explicit owner-authored proposal, always server-priced. Infeasible proposals remain visible but cannot be shared.
-- `POST /workspaces/{wid}/orders/{oid}/proposals/{rid}/share` owner body `{}` → `{url,expires_at,revision_id,terms_hash}`. Returns plaintext link only at creation, expiring in 72h; replacement share invalidates previous links. Owner copies link; no external message is sent.
+- `POST /workspaces/{wid}/orders/{oid}/proposals/{rid}/share` owner body `{}` → `{url,expires_at,revision_id,terms_hash}`. Returns plaintext link only at creation, expiring in 72h or at guest workspace expiry, whichever is earlier; replacement share invalidates previous links. Owner copies link; no external message is sent.
 - `POST /workspaces/{wid}/orders/{oid}/deposits` owner body `{amount_cents,reference,idempotency_key}` → `OrderDetail`. Manually recorded payment, never an actual payment capture. Both amount and key positive/nonempty; same key with different body is 409.
 - `POST /workspaces/{wid}/orders/{oid}/hold` owner body `{reason:string|null}` → `OrderDetail`. Explicit production hold, `null` clears.
 - `GET /workspaces/{wid}/orders/{oid}/ticket` → `{number,customer_name,revision,terms,deposit_paid_cents,balance_cents,reservations,is_demo,production_status}`. 409 until accepted current revision, reserved resources, sufficient deposit and no hold. Owner/operator; operators receive the stripped `OperationalTicket` below.

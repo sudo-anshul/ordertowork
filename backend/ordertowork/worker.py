@@ -92,7 +92,12 @@ def current_lease(job: Job, token: str) -> bool:
 
 async def process_one() -> bool:
     from ordertowork.models.domain import Order, OrderRevision, SourceMessage
-    from ordertowork.services.orders import analyze_change, order_snapshot, preview_change
+    from ordertowork.services.orders import (
+        analyze_change,
+        get_workspace,
+        order_snapshot,
+        preview_change,
+    )
 
     with session_factory()() as db:
         claimed = claim_next(db)
@@ -158,6 +163,8 @@ async def process_one() -> bool:
             job = db.scalar(select(Job).where(Job.id == job_id).with_for_update())
             if not current_lease(job, token):
                 return True
+            # A run finishing after guest expiry must not apply proposals or other changes.
+            get_workspace(db, workspace_id)
             order = db.scalar(
                 select(Order)
                 .where(Order.id == order_id, Order.workspace_id == workspace_id)

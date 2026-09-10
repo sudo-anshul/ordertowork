@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ordertowork.db import get_db
 from ordertowork.models.domain import Order, Product, Resource
 from ordertowork.services import orders as service
-from ordertowork.services.auth import Actor, get_actor, require_membership
+from ordertowork.services.auth import Actor, get_actor, require_business_actor, require_membership
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -113,6 +113,7 @@ def new_order(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_actor),
 ):
+    require_business_actor(actor)
     owner(db, actor, workspace_id)
     order = service.create_order(db, workspace_id, body.model_dump())
     result = service.order_detail(db, workspace_id, order.id)
@@ -256,6 +257,7 @@ def change_resource(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_actor),
 ):
+    require_business_actor(actor)
     owner(db, actor, workspace_id)
     result = service.update_resource(db, workspace_id, resource_id, body.total)
     db.commit()
@@ -269,6 +271,7 @@ def add_resource(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_actor),
 ):
+    require_business_actor(actor)
     owner(db, actor, workspace_id)
     if db.scalar(
         select(Resource.id).where(Resource.workspace_id == workspace_id, Resource.key == body.key)
@@ -322,6 +325,7 @@ def change_product(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_actor),
 ):
+    require_business_actor(actor)
     owner(db, actor, workspace_id)
     product = db.scalar(
         select(Product)

@@ -55,6 +55,8 @@ Ports: UI 5173, API 8000, PostgreSQL 55432. The UI proxies `/api` to FastAPI. `G
 
 ## Try the full workflow
 
+For judge access, enable the [one-click live demo](docs/judge-demo.md). **Try the live demo** opens an isolated sample order immediately, with merchandise and bakery workspaces, a one-hour session and bounded AI usage. Business accounts continue to use Cognito sign-in. Saved proposals are labeled examples; new agent runs use the configured provider.
+
 1. Create a merchandise workspace with sample data. Open **OT-1048 / Field Notes Club**.
 2. Review the request to add 15 medium shirts and move pickup earlier. The original order is 30 navy shirts for $540; navy stock and Thursday capacity prevent the requested combination.
 3. To exercise the actual worker, use **Add customer message** and paste the sample request. Wait for the saved analysis.

@@ -2,6 +2,7 @@ import { CalendarDays, Package, Plus } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useWorkspace } from '../lib/workspace';
+import { useAuth } from '../lib/auth';
 import {
   Badge,
   Button,
@@ -20,6 +21,8 @@ import { titleCase } from '../lib/format';
 import type { Product, Resource, ResourcesResponse } from '../lib/types';
 
 export function ResourcesPage() {
+  const { session } = useAuth();
+  const demo = session?.auth_method === 'demo';
   const workspace = useWorkspace();
   const path = `/workspaces/${workspace.id}/resources`;
   const { data, loading, error, refresh } = useApi<ResourcesResponse>(path);
@@ -31,20 +34,24 @@ export function ResourcesPage() {
         eyebrow="Resource availability"
         title="Make promises the business can keep."
         actions={
-          <Button variant="primary" onClick={() => setAdding(true)}>
-            <Plus size={16} /> Add stock or capacity
-          </Button>
+          !demo && (
+            <Button variant="primary" onClick={() => setAdding(true)}>
+              <Plus size={16} /> Add stock or capacity
+            </Button>
+          )
         }
       >
         <p>
-          Set the total resources your business can offer. Reserved quantities belong to existing
-          commitments and cannot be removed.
+          {demo
+            ? 'See how the sample business’s stock and capacity protect its existing commitments. Approving an order updates these reservations.'
+            : 'Set the total resources your business can offer. Reserved quantities belong to existing commitments and cannot be removed.'}
         </p>
       </PageIntro>
       {workspace.is_demo && (
         <Notice tone="warning" title="This workspace contains sample resources.">
-          These values demonstrate the workflow. Configure resources in a separate real workspace
-          before handling customer orders.
+          {demo
+            ? 'Resource settings are read-only in the demo. You can still compare availability and watch reservations change as you approve orders.'
+            : 'These values demonstrate the workflow. Configure resources in a separate real workspace before handling customer orders.'}
         </Notice>
       )}
       <ErrorNotice message={error} retry={() => void refresh()} />
@@ -79,9 +86,11 @@ export function ResourcesPage() {
                             <th>Total</th>
                             <th>Reserved</th>
                             <th>Available</th>
-                            <th>
-                              <span className="sr-only">Actions</span>
-                            </th>
+                            {!demo && (
+                              <th>
+                                <span className="sr-only">Actions</span>
+                              </th>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -109,9 +118,11 @@ export function ResourcesPage() {
                                   {resource.available} {resource.unit}
                                 </Badge>
                               </td>
-                              <td>
-                                <Button onClick={() => setEditing(resource)}>Edit total</Button>
-                              </td>
+                              {!demo && (
+                                <td>
+                                  <Button onClick={() => setEditing(resource)}>Edit total</Button>
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>
@@ -127,9 +138,11 @@ export function ResourcesPage() {
                         : 'Add your available production dates.'
                     }
                     action={
-                      <Button onClick={() => setAdding(true)}>
-                        <Plus size={16} /> Add resource
-                      </Button>
+                      !demo && (
+                        <Button onClick={() => setAdding(true)}>
+                          <Plus size={16} /> Add resource
+                        </Button>
+                      )
                     }
                   >
                     {kind === 'stock'
@@ -142,7 +155,7 @@ export function ResourcesPage() {
           })}
         </div>
       )}
-      {editing && (
+      {!demo && editing && (
         <EditResource
           resource={editing}
           path={path}
@@ -153,7 +166,7 @@ export function ResourcesPage() {
           }}
         />
       )}
-      {adding && (
+      {!demo && adding && (
         <AddResource
           path={path}
           profile={workspace.profile}

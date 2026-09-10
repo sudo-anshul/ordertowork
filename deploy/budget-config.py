@@ -33,6 +33,11 @@ OPTIONAL = {
     "OTW_BEDROCK_MAX_OUTPUT_TOKENS",
     "OTW_AGENT_MAX_TURNS",
     "OTW_AGENT_MAX_TOTAL_TOKENS",
+    "OTW_DEMO_ENABLED",
+    "OTW_DEMO_SESSION_MINUTES",
+    "OTW_MAX_DAILY_DEMO_SESSIONS",
+    "OTW_MAX_DEMO_AGENT_JOBS",
+    "OTW_MAX_DAILY_DEMO_BEDROCK_ATTEMPTS",
     "OTW_POSTGRES_IMAGE",
     "OTW_CADDY_IMAGE",
 }
@@ -56,6 +61,11 @@ DEFAULTS = {
     "OTW_BEDROCK_MAX_OUTPUT_TOKENS": "1024",
     "OTW_AGENT_MAX_TURNS": "5",
     "OTW_AGENT_MAX_TOTAL_TOKENS": "18000",
+    "OTW_DEMO_ENABLED": "false",
+    "OTW_DEMO_SESSION_MINUTES": "60",
+    "OTW_MAX_DAILY_DEMO_SESSIONS": "50",
+    "OTW_MAX_DEMO_AGENT_JOBS": "2",
+    "OTW_MAX_DAILY_DEMO_BEDROCK_ATTEMPTS": "20",
 }
 IMAGE = re.compile(
     r"[0-9]{12}\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?/"
@@ -121,6 +131,16 @@ def load_config(path: Path) -> dict[str, str]:
             raise ValueError(f"{key} must be a positive integer")
     if not resolved["OTW_MAX_DAILY_BEDROCK_ATTEMPTS"].isdigit():
         raise ValueError("OTW_MAX_DAILY_BEDROCK_ATTEMPTS must be a nonnegative integer")
+    if resolved["OTW_DEMO_ENABLED"] not in {"true", "false"}:
+        raise ValueError("OTW_DEMO_ENABLED must be true or false")
+    for key, lower, upper in (
+        ("OTW_DEMO_SESSION_MINUTES", 5, 120),
+        ("OTW_MAX_DAILY_DEMO_SESSIONS", 0, 200),
+        ("OTW_MAX_DEMO_AGENT_JOBS", 0, 5),
+        ("OTW_MAX_DAILY_DEMO_BEDROCK_ATTEMPTS", 0, 100),
+    ):
+        if not resolved[key].isdigit() or not lower <= int(resolved[key]) <= upper:
+            raise ValueError(f"{key} must be an integer between {lower} and {upper}")
     if int(resolved["OTW_WORKER_LEASE_SECONDS"]) <= int(resolved["OTW_AGENT_TIMEOUT_SECONDS"]) + 15:
         raise ValueError("The worker lease must exceed the inference timeout by over 15 seconds")
     return resolved

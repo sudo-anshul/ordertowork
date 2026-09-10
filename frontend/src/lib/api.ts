@@ -11,6 +11,7 @@ export class ApiError extends Error {
 }
 
 let csrfToken = '';
+export const SESSION_EXPIRED_EVENT = 'ordertowork:session-expired';
 export function setCsrfToken(token: string | null | undefined) {
   csrfToken = token ?? '';
 }
@@ -41,6 +42,9 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
         ? await response.json()
         : await response.text();
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/auth/') && !path.startsWith('/customer/')) {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
     const detail = typeof data === 'object' && data ? (data.detail ?? data) : data;
     let message = 'This request could not be completed. Please try again.';
     let code = `http_${response.status}`;
@@ -56,6 +60,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       message = detail.message ?? detail.error ?? message;
       code = detail.code ?? code;
     }
+    if (code === 'demo_expired') window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     throw new ApiError(message, response.status, code);
   }
   return data as T;

@@ -32,3 +32,14 @@ The root integration run independently checked the disclosure against a persiste
 These checks exercised real local persistence and API actions in reference mode. They do not establish live Bedrock execution, external email delivery, payment capture, or full WCAG conformance. Browser validation included keyboard interaction and narrow layouts; the repository’s backend tests cover the deeper permission, transaction, and revision invariants.
 
 The final frontend production build and full npm audit passed after the fixes, with zero reported npm vulnerabilities.
+
+## Guest demo acceptance — 10 September 2026
+
+Checked the production frontend bundle against the real API at `localhost:8180`, using a separate synthetic SQLite database and reference execution mode. No live AWS model, business data, or outgoing message was used.
+
+- The landing page offers a primary **Try the live demo** action and a separate business sign-in link. One click creates a guest session with merchandise and bakery workspaces; a fresh entry opens the merchandise order directly. Browser testing found and fixed an overlapping login redirect that initially returned to Decisions.
+- Compared the 45-shirt options, shared revision 3, opened the standalone customer page, and explicitly approved its $810 agreement. The owner then recorded the $135 sample deposit, opened the accepted production ticket, and confirmed **Start work**. The ticket showed revision 3, $405 recorded, the reserved charcoal sizes, and **In production**.
+- Switched to the bakery workspace and opened its prepared order. Capacity and stock were readable with no add/edit controls. The guest navigation omitted team, business rules, new-order, and workspace-creation controls. Direct team navigation showed the business-account explanation; **End demo & sign in** returned to the landing page without a provider redirect.
+- Checked the landing, order, customer confirmation, and production views at 390 CSS pixels with no page overflow; the order also remained 320 pixels wide at a 320-pixel viewport. The guide starts collapsed on mobile and can be expanded. Desktop landing was visually reviewed at 1440 pixels.
+- Injected one explicit API `401 session_expired` response in Playwright after the real workflow to verify the frontend expiry path. It returned to the landing page and displayed the fresh-demo prompt. This check simulates the response, not elapsed session time; server expiry and isolation belong to backend tests.
+- Production build and Prettier validation passed after the changes. Hosted Cognito, live Bedrock, and the deployed guest flow require separate live verification.

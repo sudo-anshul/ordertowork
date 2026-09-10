@@ -1,6 +1,7 @@
 import { Download, Paperclip, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { shortDate } from '../lib/format';
 import { useAction, useApi } from '../lib/hooks';
 import { Badge, Button, ErrorNotice, Loading, Panel, PanelHeading } from './ui';
@@ -14,6 +15,8 @@ interface Attachment {
   created_at: string;
 }
 export function Attachments({ orderPath }: { orderPath: string }) {
+  const { session } = useAuth();
+  const demo = session?.auth_method === 'demo';
   const path = `${orderPath}/files`;
   const { data, loading, error, refresh } = useApi<{ files: Attachment[] }>(path);
   const input = useRef<HTMLInputElement>(null);
@@ -66,26 +69,35 @@ export function Attachments({ orderPath }: { orderPath: string }) {
           </div>
         ))
       )}
-      <div className="upload-row">
-        <label className="sr-only" htmlFor="attachment-file">
-          Choose order attachment
-        </label>
-        <input
-          id="attachment-file"
-          ref={input}
-          type="file"
-          className="file-input"
-          accept="image/png,image/jpeg,application/pdf"
-          onChange={(e) => {
-            setSelected(e.target.files?.[0] ?? null);
-            setLocalError(null);
-          }}
-        />
-        <Button onClick={upload} disabled={!selected} busy={action.pending}>
-          <Upload size={14} /> Upload file
-        </Button>
-      </div>
-      <p className="field-hint">PNG, JPEG, or PDF · up to 5 MB</p>
+      {demo ? (
+        <p className="field-hint">
+          File uploads are available in a business account. Use the sample order to explore this
+          demo.
+        </p>
+      ) : (
+        <>
+          <div className="upload-row">
+            <label className="sr-only" htmlFor="attachment-file">
+              Choose order attachment
+            </label>
+            <input
+              id="attachment-file"
+              ref={input}
+              type="file"
+              className="file-input"
+              accept="image/png,image/jpeg,application/pdf"
+              onChange={(e) => {
+                setSelected(e.target.files?.[0] ?? null);
+                setLocalError(null);
+              }}
+            />
+            <Button onClick={upload} disabled={!selected} busy={action.pending}>
+              <Upload size={14} /> Upload file
+            </Button>
+          </div>
+          <p className="field-hint">PNG, JPEG, or PDF · up to 5 MB</p>
+        </>
+      )}
     </Panel>
   );
 }

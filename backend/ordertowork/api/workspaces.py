@@ -16,6 +16,7 @@ from ordertowork.services.auth import (
     get_actor,
     normalize_email,
     platform_admin,
+    require_business_actor,
     require_membership,
     workspace_dict,
 )
@@ -112,6 +113,7 @@ def create_workspace(
     actor: Actor = Depends(get_actor),
     db: Session = Depends(get_db),
 ) -> dict:
+    require_business_actor(actor)
     from ordertowork.services.profiles import configure_workspace, seed_workspace
 
     workspace = Workspace(
@@ -152,6 +154,7 @@ def patch_workspace(
     actor: Actor = Depends(get_actor),
     db: Session = Depends(get_db),
 ) -> dict:
+    require_business_actor(actor)
     workspace = lock_workspace(db, workspace_id)
     require_membership(db, actor, workspace_id, roles=("owner",))
     changes = body.model_dump(exclude_unset=True)
@@ -171,6 +174,7 @@ def archive_workspace(
     actor: Actor = Depends(get_actor),
     db: Session = Depends(get_db),
 ) -> dict:
+    require_business_actor(actor)
     workspace = lock_workspace(db, workspace_id)
     require_membership(db, actor, workspace_id, roles=("owner",))
     if body.confirm_name != workspace.name:
@@ -204,6 +208,7 @@ def add_member(
     actor: Actor = Depends(get_actor),
     db: Session = Depends(get_db),
 ) -> dict:
+    require_business_actor(actor)
     lock_workspace(db, workspace_id)
     require_membership(db, actor, workspace_id, roles=("owner",))
     users = list(db.scalars(select(User).where(User.email == body.email)))
@@ -272,6 +277,7 @@ def change_member_role(
     actor: Actor = Depends(get_actor),
     db: Session = Depends(get_db),
 ) -> dict:
+    require_business_actor(actor)
     lock_workspace(db, workspace_id)
     require_membership(db, actor, workspace_id, roles=("owner",))
     member = target_member(db, workspace_id, membership_id)
@@ -296,6 +302,7 @@ def remove_member(
     actor: Actor = Depends(get_actor),
     db: Session = Depends(get_db),
 ) -> dict:
+    require_business_actor(actor)
     lock_workspace(db, workspace_id)
     require_membership(db, actor, workspace_id, roles=("owner",))
     member = target_member(db, workspace_id, membership_id)
@@ -312,6 +319,7 @@ def platform_overview(
     actor: Actor = Depends(get_actor),
     db: Session = Depends(get_db),
 ) -> dict:
+    require_business_actor(actor)
     if not platform_admin(actor.user):
         raise fail(403, "platform_admin_required", "Platform support access is required")
     response.headers["Cache-Control"] = "no-store"

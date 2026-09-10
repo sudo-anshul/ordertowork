@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
+from ordertowork.config import get_settings
 from ordertowork.db import get_db, utcnow
+from ordertowork.models.core import Workspace
 from ordertowork.models.jobs import Job
 from ordertowork.services.auth import Actor, get_actor, require_membership
 from ordertowork.services.jobs import job_payload
@@ -31,6 +33,18 @@ def retry_job(
 ):
     require_membership(db, actor, workspace_id, roles=("owner",))
     job = owned_job(db, workspace_id, job_id, lock=True)
+    workspace = db.get(Workspace, workspace_id)
+    if (
+        workspace.demo_expires_at is not None
+        and workspace.demo_agent_attempts >= get_settings().max_demo_agent_jobs
+    ):
+        raise HTTPException(
+            429,
+            detail={
+                "code": "demo_analysis_limit",
+                "message": "This demo has used its analysis allowance. You can still explore the prepared options.",
+            },
+        )
     if job.status != "failed":
         raise HTTPException(
             409, detail={"code": "not_failed", "message": "Only failed analysis can be retried."}

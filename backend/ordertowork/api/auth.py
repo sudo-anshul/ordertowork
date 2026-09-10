@@ -5,14 +5,15 @@ from urllib.parse import urlencode, urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from ordertowork.config import get_settings
-from ordertowork.db import get_db, utcnow
+from ordertowork.db import get_db, new_id, utcnow
 from ordertowork.models.auth import AuthSession, OAuthLoginState
-from ordertowork.models.core import User
+from ordertowork.models.core import Membership, User, Workspace
 from ordertowork.services.auth import (
     Actor,
     actor_payload,
     audit,
     check_development_request,
+    check_request_origin,
     cognito_configuration,
     cognito_logout_url,
     development_enabled,
@@ -24,6 +25,7 @@ from ordertowork.services.auth import (
     normalize_email,
     pkce_challenge,
     platform_admin,
+    request_session,
     validate_id_token,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -34,6 +36,10 @@ from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 OAUTH_COOKIE = "otw_login_state"
+
+
+class DemoLogin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class DevelopmentLogin(BaseModel):
@@ -79,6 +85,7 @@ def auth_config(request: Request) -> dict:
         "development_login_enabled": local_enabled,
         "login_url": "/api/auth/login" if settings.auth_mode == "cognito" else None,
         "configured": configured,
+        "demo_enabled": settings.demo_enabled,
     }
 
 
@@ -88,6 +95,67 @@ def me(
 ) -> dict:
     response.headers["Cache-Control"] = "no-store"
     return actor_payload(db, actor)
+
+
+@router.post("/demo")
+def demo_login(
+    request: Request,
+    response: Response,
+    body: DemoLogin | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    from ordertowork.services.demo import reserve_demo_session
+    from ordertowork.services.profiles import seed_workspace
+
+    settings = get_settings()
+    if not settings.demo_enabled:
+        raise fail(404, "demo_disabled", "The live demo is currently unavailable")
+    check_request_origin(request, settings)
+    existing = request_session(request, db)
+    if existing is not None:
+        if existing.auth_method != "demo":
+            raise fail(
+                409,
+                "business_session_active",
+                "You are already signed in to your business account. Sign out to try the guest demo.",
+            )
+        user = db.get(User, existing.user_id)
+        if user is not None:
+            response.headers["Cache-Control"] = "no-store"
+            return actor_payload(db, Actor(user, existing.csrf_token, existing))
+    if not reserve_demo_session(db):
+        raise fail(
+            429,
+            "demo_capacity_reached",
+            "Today's demo spaces are full. Please try again after 00:00 UTC.",
+        )
+    identifier = new_id()
+    user = User(
+        provider_subject=f"demo:{identifier}",
+        email=f"guest-{identifier}@ordertowork.invalid",
+        name="Demo guest",
+        email_verified=False,
+        is_platform_admin=False,
+    )
+    db.add(user)
+    db.flush()
+    expires_at = utcnow() + timedelta(minutes=settings.demo_session_minutes)
+    for profile, name in (("merchandise", "Common Ground Merch"), ("bakery", "Butter & Crumb")):
+        workspace = Workspace(
+            name=name,
+            profile=profile,
+            is_demo=True,
+            demo_expires_at=expires_at,
+        )
+        db.add(workspace)
+        db.flush()
+        db.add(Membership(workspace_id=workspace.id, user_id=user.id, role="owner"))
+        seed_workspace(db, workspace, relative_dates=True)
+    session = issue_session(db, user, "demo", response, expires_at=expires_at)
+    audit(db, "auth.demo_started", user.id)
+    db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return actor_payload(db, Actor(user, session.csrf_token, session))
 
 
 @router.post("/development-login")
@@ -255,4 +323,7 @@ def logout(
         samesite="lax",
     )
     response.headers["Cache-Control"] = "no-store"
-    return {"ok": True, "logout_url": cognito_logout_url(settings)}
+    return {
+        "ok": True,
+        "logout_url": None if actor.session.auth_method == "demo" else cognito_logout_url(settings),
+    }

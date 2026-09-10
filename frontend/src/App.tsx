@@ -1,6 +1,13 @@
 import { ArrowLeft } from 'lucide-react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
-import { AppLayout, Home, OperationsLayout, OwnerGuard, SessionGuard } from './components/layout';
+import {
+  AppLayout,
+  BusinessAccountGuard,
+  Home,
+  OperationsLayout,
+  OwnerGuard,
+  SessionGuard,
+} from './components/layout';
 import { useWorkspace } from './lib/workspace';
 import { EmptyState } from './components/ui';
 import { LoginPage, SetupPage } from './pages/auth';
@@ -25,7 +32,9 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<Home />} />
       <Route element={<SessionGuard />}>
-        <Route path="/setup" element={<SetupPage />} />
+        <Route element={<BusinessAccountGuard />}>
+          <Route path="/setup" element={<SetupPage />} />
+        </Route>
         <Route path="/w/:workspaceId" element={<AppLayout />}>
           <Route index element={<WorkspaceHome />} />
           <Route path="production" element={<ProductionQueuePage />} />
@@ -33,11 +42,13 @@ export default function App() {
           <Route element={<OwnerGuard />}>
             <Route path="decisions" element={<DecisionsPage />} />
             <Route path="orders" element={<OrdersPage />} />
-            <Route path="orders/new" element={<NewOrderPage />} />
             <Route path="orders/:orderId" element={<OrderDetailPage />} />
             <Route path="resources" element={<ResourcesPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="team" element={<TeamPage />} />
+            <Route element={<BusinessAccountGuard />}>
+              <Route path="orders/new" element={<NewOrderPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="team" element={<TeamPage />} />
+            </Route>
           </Route>
         </Route>
         <Route path="/operations" element={<OperationsLayout />}>

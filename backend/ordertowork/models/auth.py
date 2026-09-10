@@ -1,9 +1,22 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String
+from sqlalchemy import JSON, CheckConstraint, Date, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ordertowork.db import Base, new_id, utcnow
+
+
+class DemoDailyUsage(Base):
+    """Shared reservations prevent new anonymous sessions from resetting spend caps."""
+
+    __tablename__ = "demo_daily_usage"
+    __table_args__ = (
+        CheckConstraint("sessions >= 0", name="nonnegative_demo_sessions"),
+        CheckConstraint("bedrock_attempts >= 0", name="nonnegative_demo_bedrock_attempts"),
+    )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    sessions: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    bedrock_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class AuthSession(Base):

@@ -76,7 +76,9 @@ def validate_manifests(host: dict, services: dict) -> None:
         raise ValueError("Register this host's HTTPS Cognito logout URL before releasing")
 
 
-def release_config(host: dict, services: dict, digest: str) -> dict[str, str]:
+def release_config(
+    host: dict, services: dict, digest: str, *, enable_demo: bool = False
+) -> dict[str, str]:
     module = budget_module()
     allowed = module.REQUIRED | module.OPTIONAL
     settings = {
@@ -88,6 +90,7 @@ def release_config(host: dict, services: dict, digest: str) -> dict[str, str]:
         OTW_IMAGE=host["repository_uri"] + "@" + digest,
         OTW_DOMAIN=host["domain"],
         OTW_AWS_REGION=host["region"],
+        OTW_DEMO_ENABLED="true" if enable_demo else "false",
     )
     settings.setdefault("OTW_BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")
     if settings.get("OTW_S3_BUCKET") != services["resource_names"]["bucket"]:
@@ -296,12 +299,15 @@ def main() -> None:
     parser.add_argument(
         "--apply", action="store_true", help="Push/upload and dispatch the host release"
     )
+    parser.add_argument(
+        "--enable-demo", action="store_true", help="Enable bounded, isolated guest demo sessions"
+    )
     args = parser.parse_args()
     if not re.fullmatch(r"[a-f0-9]{7,40}", args.tag):
         parser.error("--tag must be a lowercase Git commit hash (7–40 characters)")
     host, services = json.loads(args.host.read_text()), json.loads(args.services.read_text())
     validate_manifests(host, services)
-    settings = release_config(host, services, "sha256:" + "0" * 64)
+    settings = release_config(host, services, "sha256:" + "0" * 64, enable_demo=args.enable_demo)
     preview_archive = build_archive(settings)
     plan = {
         "mode": "apply" if args.apply else "preview",
@@ -309,6 +315,7 @@ def main() -> None:
         "domain": host["domain"],
         "image_tag": host["repository_uri"] + ":" + args.tag,
         "local_image": args.local_image,
+        "demo_enabled": args.enable_demo,
         "archive_members": ["deploy/" + name for name in BUNDLE_FILES] + ["config.json"],
         "approximate_archive_bytes": len(preview_archive),
     }
@@ -320,7 +327,7 @@ def main() -> None:
     digest = push_if_missing(
         session.client("ecr", config=SDK_CONFIG), host, args.tag, args.local_image
     )
-    settings = release_config(host, services, digest)
+    settings = release_config(host, services, digest, enable_demo=args.enable_demo)
     bucket = services["resource_names"]["bucket"]
     key, archive_digest = upload_archive(
         session.client("s3", config=SDK_CONFIG), host, bucket, args.tag, build_archive(settings)

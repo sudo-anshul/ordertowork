@@ -15,6 +15,7 @@ from ordertowork.config import Settings, get_settings
 from ordertowork.db import get_db, utcnow
 from ordertowork.models.auth import AuthAuditEvent, AuthSession
 from ordertowork.models.core import Membership, User, Workspace
+from ordertowork.services.demo import demo_workspace_active
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -98,6 +99,8 @@ def check_request_origin(request: Request, settings: Settings) -> None:
 def platform_admin(user: User, settings: Settings | None = None) -> bool:
     settings = settings or get_settings()
     allowed = {item for item in re.split(r"[\s,]+", settings.platform_admin_subjects) if item}
+    if user.provider_subject.startswith("demo:"):
+        return False
     if user.provider_subject.startswith("development:") and not development_enabled(settings):
         return False
     return user.provider_subject in allowed
@@ -110,16 +113,41 @@ class Actor:
     session: AuthSession | None = None
 
 
-def get_actor(request: Request, db: Session = Depends(get_db)) -> Actor:
+def is_demo_actor(actor: Actor) -> bool:
+    return bool(
+        (actor.session is not None and actor.session.auth_method == "demo")
+        or actor.user.provider_subject.startswith("demo:")
+    )
+
+
+def require_business_actor(actor: Actor) -> None:
+    if is_demo_actor(actor):
+        raise fail(
+            403,
+            "demo_restricted",
+            "This action is available in a business account. Explore the sample orders in your demo.",
+        )
+
+
+def request_session(request: Request, db: Session) -> AuthSession | None:
+    """Only accept current configured sessions, including explicitly enabled guest sessions."""
     settings = get_settings()
     raw = request.cookies.get(settings.session_cookie, "")
     if not 32 <= len(raw) <= 256:
-        raise fail(401, "authentication_required", "Sign in to continue")
+        return None
     session = db.scalar(select(AuthSession).where(AuthSession.token_hash == digest(raw)))
     if session is None or session.revoked_at or aware(session.expires_at) <= utcnow():
+        return None
+    if session.auth_method == "demo":
+        return session if settings.demo_enabled else None
+    return session if session.auth_method == settings.auth_mode else None
+
+
+def get_actor(request: Request, db: Session = Depends(get_db)) -> Actor:
+    settings = get_settings()
+    session = request_session(request, db)
+    if session is None:
         raise fail(401, "session_expired", "Your session expired. Sign in again")
-    if session.auth_method != settings.auth_mode:
-        raise fail(401, "session_expired", "Sign in again using the configured login method")
     if session.auth_method == "development":
         check_development_request(request, settings)
     user = db.get(User, session.user_id)
@@ -153,6 +181,8 @@ def require_membership(
         raise fail(404, "workspace_not_found", "Workspace not found")
     if workspace.status != "active":
         raise fail(409, "workspace_archived", "This workspace is archived")
+    if not demo_workspace_active(workspace):
+        raise fail(410, "demo_expired", "This demo has ended. Start a new demo to explore again.")
     return membership
 
 
@@ -170,25 +200,33 @@ def audit(
     )
 
 
-def issue_session(db: Session, user: User, auth_method: str, response: Response) -> AuthSession:
+def issue_session(
+    db: Session,
+    user: User,
+    auth_method: str,
+    response: Response,
+    *,
+    expires_at: datetime | None = None,
+) -> AuthSession:
     settings = get_settings()
     if not 1 <= settings.session_hours <= 168:
         raise fail(
             503, "authentication_misconfigured", "Authentication is not configured correctly"
         )
     raw = secrets.token_urlsafe(48)
+    expires_at = expires_at or (utcnow() + timedelta(hours=settings.session_hours))
     session = AuthSession(
         user_id=user.id,
         token_hash=digest(raw),
         csrf_token=secrets.token_urlsafe(32),
         auth_method=auth_method,
-        expires_at=utcnow() + timedelta(hours=settings.session_hours),
+        expires_at=expires_at,
     )
     db.add(session)
     response.set_cookie(
         settings.session_cookie,
         raw,
-        max_age=settings.session_hours * 3600,
+        max_age=max(1, int((expires_at - utcnow()).total_seconds())),
         secure=urlsplit(settings.app_url).scheme == "https",
         httponly=True,
         samesite="lax",
@@ -208,6 +246,9 @@ def workspace_dict(workspace: Workspace, role: str) -> dict:
         "role": role,
         "status": workspace.status,
         "is_demo": workspace.is_demo,
+        "demo_expires_at": aware(workspace.demo_expires_at).isoformat()
+        if workspace.demo_expires_at
+        else None,
     }
 
 
@@ -225,10 +266,21 @@ def actor_payload(db: Session, actor: Actor) -> dict:
             "email": user.email,
             "name": user.name,
             "email_verified": user.email_verified,
-            "is_platform_admin": platform_admin(user),
+            "is_platform_admin": not is_demo_actor(actor) and platform_admin(user),
         },
-        "workspaces": [workspace_dict(workspace, role) for workspace, role in rows],
+        "workspaces": [
+            workspace_dict(workspace, role)
+            for workspace, role in rows
+            if demo_workspace_active(workspace)
+        ],
         "csrf_token": actor.csrf_token,
+        "auth_method": actor.session.auth_method if actor.session else get_settings().auth_mode,
+        "demo": {
+            "expires_at": aware(actor.session.expires_at).isoformat(),
+            "max_agent_jobs_per_workspace": get_settings().max_demo_agent_jobs,
+        }
+        if actor.session is not None and is_demo_actor(actor)
+        else None,
     }
 
 

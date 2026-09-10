@@ -21,6 +21,8 @@ Use **standard CPU credits**, not unlimited, so a busy burst cannot generate sur
 
 The deployment defaults are 20 requested jobs per workspace/day, 100 model attempts globally/day, one job attempt, 1,024 output tokens per model call, five agent turns, and an 18,000-token agent limit. Failed invocations can still cost money and consume an attempt. A count/token limit is not a dollar-denominated AWS cap. Lower the global attempt limit during development. `OTW_MAX_DAILY_BEDROCK_ATTEMPTS=0` is the application inference stop switch after restarting API and worker with the updated environment.
 
+One-click judge access is optional. Add `--enable-demo` to `aws_release.py` to enable isolated one-hour sample workspaces, capped at 50 new sessions/day, two analysis attempts per workspace, and 20 paid demo attempts/day within the overall budget. See [judge demo behavior and controls](../docs/judge-demo.md). Business login continues to use Cognito.
+
 AWS Budgets and billing alerts are delayed notifications; they do not halt charges. Monitor actual use and leave capacity for the judges. Pausing the worker stops new model work while keeping manual order management available. Stopping EC2 stops compute charges but **EBS storage and a retained public IPv4 address continue billing**.
 
 ## Provisioning contract

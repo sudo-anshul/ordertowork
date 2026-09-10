@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     auth_mode: str = "development"
     session_cookie: str = "otw_session"
     session_hours: int = 12
+    demo_enabled: bool = False
+    demo_session_minutes: int = Field(default=60, ge=5, le=120)
+    max_daily_demo_sessions: int = Field(default=50, ge=0, le=200)
+    max_demo_agent_jobs: int = Field(default=2, ge=0, le=5)
+    max_daily_demo_bedrock_attempts: int = Field(default=20, ge=0, le=100)
     cognito_region: str = "us-east-1"
     cognito_user_pool_id: str = ""
     cognito_client_id: str = ""

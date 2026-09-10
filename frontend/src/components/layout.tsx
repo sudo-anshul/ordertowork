@@ -27,6 +27,7 @@ import { useAction, useApi } from '../lib/hooks';
 import { initials } from '../lib/format';
 import { WorkspaceContext, useWorkspace } from '../lib/workspace';
 import { Badge, Brand, Button, EmptyState, ErrorNotice, Loading } from './ui';
+import { DemoGuide } from './demo-guide';
 
 export function RuntimeBar() {
   const { config } = useAuth();
@@ -93,6 +94,34 @@ export function OwnerGuard() {
   );
 }
 
+export function BusinessAccountGuard() {
+  const { session, logout } = useAuth();
+  const location = useLocation();
+  const action = useAction();
+  if (session?.auth_method !== 'demo') return <Outlet />;
+  return (
+    <div className={location.pathname === '/setup' ? 'standalone' : undefined}>
+      <EmptyState
+        title="Make it your own with a business account."
+        action={
+          <div className="demo-restricted-actions">
+            <Link className="button button-primary" to="/">
+              Back to the demo
+            </Link>
+            <Button busy={action.pending} onClick={() => void action.run(logout)}>
+              End demo &amp; sign in
+            </Button>
+          </div>
+        }
+      >
+        The demo includes two prepared businesses. Creating orders, managing a team, and changing
+        business rules are available in a business account.
+      </EmptyState>
+      <ErrorNotice message={action.error} />
+    </div>
+  );
+}
+
 export function AppLayout() {
   const { workspaceId } = useParams();
   const { session, logout } = useAuth();
@@ -134,6 +163,7 @@ export function AppLayout() {
       </div>
     );
   const owner = workspace.role === 'owner';
+  const demo = session?.auth_method === 'demo';
   const nav = [
     ...(owner
       ? [
@@ -145,8 +175,12 @@ export function AppLayout() {
     ...(owner
       ? [
           { path: 'resources', label: 'Capacity & stock', icon: Warehouse },
-          { path: 'settings', label: 'Business rules', icon: Settings2 },
-          { path: 'team', label: 'Team', icon: Users },
+          ...(!demo
+            ? [
+                { path: 'settings', label: 'Business rules', icon: Settings2 },
+                { path: 'team', label: 'Team', icon: Users },
+              ]
+            : []),
         ]
       : []),
   ];
@@ -166,7 +200,9 @@ export function AppLayout() {
             <Brand />
           </Link>
           <div className="workspace-switch">
-            <label htmlFor="workspace-switch">Your workspace</label>
+            <label htmlFor="workspace-switch">
+              {demo ? 'Explore another business' : 'Your workspace'}
+            </label>
             <select
               id="workspace-switch"
               value={workspace.id}
@@ -202,9 +238,15 @@ export function AppLayout() {
             ))}
           </nav>
           <div className="sidebar-bottom">
-            <Link to="/setup" className="subtle-link">
-              <Plus size={15} /> Add a workspace
-            </Link>
+            {demo ? (
+              <p className="demo-sidebar-note">
+                Your own sample workspace. Changes stay here and expire with this session.
+              </p>
+            ) : (
+              <Link to="/setup" className="subtle-link">
+                <Plus size={15} /> Add a workspace
+              </Link>
+            )}
             {session?.user.is_platform_admin && (
               <Link to="/operations" className="subtle-link">
                 <ShieldCheck size={15} /> Platform operations
@@ -214,12 +256,14 @@ export function AppLayout() {
               <div className="avatar">{initials(session?.user.name || 'You')}</div>
               <div className="account-name">
                 <strong>{session?.user.name}</strong>
-                <span>{owner ? 'Workspace owner' : 'Production operator'}</span>
+                <span>
+                  {demo ? 'Demo visitor' : owner ? 'Workspace owner' : 'Production operator'}
+                </span>
               </div>
               <button
                 className="icon-button"
-                title="Sign out"
-                aria-label="Sign out"
+                title={demo ? 'End demo' : 'Sign out'}
+                aria-label={demo ? 'End demo' : 'Sign out'}
                 onClick={() => void signOut.run(logout)}
                 disabled={signOut.pending}
               >
@@ -238,8 +282,8 @@ export function AppLayout() {
             </div>
             <div className="topbar-actions">
               <span className="timezone-label">{workspace.timezone.replaceAll('_', ' ')}</span>
-              <Badge>{owner ? 'Owner' : 'Operator'}</Badge>
-              {owner && (
+              <Badge>{demo ? 'Demo visitor' : owner ? 'Owner' : 'Operator'}</Badge>
+              {owner && !demo && (
                 <Link className="button button-small button-secondary" to={`${base}/orders/new`}>
                   <Plus size={15} /> New order
                 </Link>
@@ -250,17 +294,19 @@ export function AppLayout() {
                 </summary>
                 <div className="mobile-account-menu">
                   <strong>{session?.user.name}</strong>
-                  <small>{session?.user.email}</small>
-                  <Link to="/setup">
-                    <Plus size={15} /> Add a workspace
-                  </Link>
+                  <small>{demo ? 'Private demo session' : session?.user.email}</small>
+                  {!demo && (
+                    <Link to="/setup">
+                      <Plus size={15} /> Add a workspace
+                    </Link>
+                  )}
                   {session?.user.is_platform_admin && (
                     <Link to="/operations">
                       <ShieldCheck size={15} /> Platform operations
                     </Link>
                   )}
                   <button disabled={signOut.pending} onClick={() => void signOut.run(logout)}>
-                    <LogOut size={15} /> Sign out
+                    <LogOut size={15} /> {demo ? 'End demo' : 'Sign out'}
                   </button>
                   <ErrorNotice message={signOut.error} />
                 </div>
@@ -268,6 +314,7 @@ export function AppLayout() {
             </div>
           </header>
           <main id="main" className="main-content" tabIndex={-1}>
+            <DemoGuide />
             <Outlet />
           </main>
         </div>

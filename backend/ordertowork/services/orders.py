@@ -26,6 +26,7 @@ from ordertowork.models.domain import (
     Resource,
     SourceMessage,
 )
+from ordertowork.services.demo import demo_workspace_active
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -49,6 +50,23 @@ def get_order(db: Session, workspace_id: str, order_id: str, *, lock=False) -> O
     order = db.scalar(stmt)
     if not order:
         fail("not_found", "Order not found.", 404)
+    if lock:
+        workspace = get_workspace(db, workspace_id)
+        if workspace.demo_expires_at is not None:
+            events = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(OrderEvent)
+                    .where(OrderEvent.order_id == order.id)
+                )
+                or 0
+            )
+            if events >= 100:
+                fail(
+                    "demo_interaction_limit",
+                    "This demo order has reached its interaction limit.",
+                    429,
+                )
     return order
 
 
@@ -56,6 +74,8 @@ def get_workspace(db: Session, workspace_id: str) -> Workspace:
     workspace = db.get(Workspace, workspace_id)
     if not workspace or workspace.status != "active":
         fail("workspace_unavailable", "Workspace unavailable.", 404)
+    if not demo_workspace_active(workspace):
+        fail("demo_expired", "This demo has ended. Start a new demo to explore again.", 410)
     return workspace
 
 
@@ -575,6 +595,18 @@ def record_message(
     db: Session, workspace_id: str, order_id: str, body: str, source="manual"
 ) -> SourceMessage:
     order = get_order(db, workspace_id, order_id, lock=True)
+    workspace = get_workspace(db, workspace_id)
+    if workspace.demo_expires_at is not None:
+        count = (
+            db.scalar(
+                select(func.count())
+                .select_from(SourceMessage)
+                .where(SourceMessage.order_id == order_id)
+            )
+            or 0
+        )
+        if count >= 10:
+            fail("demo_message_limit", "This demo order has reached its message limit.", 429)
     if not body.strip() or len(body) > 12000:
         fail("invalid_message", "Message must contain 1–12,000 characters.", 422)
     message = SourceMessage(
@@ -737,6 +769,9 @@ def share_proposal(db: Session, workspace_id: str, order_id: str, revision_id: s
             candidate.status = "superseded"
     token = secrets.token_urlsafe(32)
     expires = utcnow() + timedelta(hours=72)
+    workspace = get_workspace(db, workspace_id)
+    if workspace.demo_expires_at is not None:
+        expires = min(expires, aware(workspace.demo_expires_at))
     db.add(
         ApprovalLink(
             workspace_id=workspace_id,
@@ -756,7 +791,7 @@ def share_proposal(db: Session, workspace_id: str, order_id: str, revision_id: s
         db,
         order,
         "proposal_shared",
-        f"Approval link created for exact revision {revision.number}; expires in 72 hours.",
+        f"Approval link created for exact revision {revision.number}; expires {iso(expires)}.",
     )
     db.flush()
     return {

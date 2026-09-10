@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from ordertowork.config import get_settings
 from ordertowork.db import get_db, new_id
 from ordertowork.models.jobs import Attachment
-from ordertowork.services.auth import Actor, get_actor, require_membership
+from ordertowork.services.auth import Actor, get_actor, require_business_actor, require_membership
 from ordertowork.services.files import (
     download_url,
     local_path,
@@ -52,6 +52,7 @@ def upload(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_actor),
 ):
+    require_business_actor(actor)
     require_membership(db, actor, workspace_id, roles=("owner",))
     get_order(db, workspace_id, order_id)
     content = file.file.read(get_settings().max_upload_bytes + 1)

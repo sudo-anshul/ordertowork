@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useWorkspace } from '../lib/workspace';
+import { useAuth } from '../lib/auth';
 import { Attachments } from '../components/attachments';
 import { AnalysisEvidence } from '../components/analysis-evidence';
 import { OrderForm } from '../components/order-form';
@@ -734,6 +735,8 @@ function MessageComposer({
   onClose: () => void;
   onSaved: (job: AnalysisJob) => Promise<void>;
 }) {
+  const { session } = useAuth();
+  const workspace = useWorkspace();
   const [body, setBody] = useState('');
   const action = useAction();
   const submit = (event: FormEvent) => {
@@ -750,6 +753,13 @@ function MessageComposer({
           Paste the customer’s words as they were received. This saves the source and starts an
           analysis of what changed.
         </p>
+        {session?.auth_method === 'demo' && session.demo && (
+          <Notice title="Try a fictional customer request.">
+            This demo allows {session.demo.max_agent_jobs_per_workspace} AI requests per business,
+            subject to service availability. The saved example remains available if a new check
+            cannot run.
+          </Notice>
+        )}
         <Field
           label="Customer message"
           htmlFor="source-body"
@@ -763,7 +773,11 @@ function MessageComposer({
             maxLength={10000}
             value={body}
             onChange={(event) => setBody(event.target.value)}
-            placeholder="Could we add 15 medium shirts and collect on Thursday at noon instead? Please tell me the price difference before I confirm."
+            placeholder={
+              workspace.profile === 'bakery'
+                ? 'Could we change the icing to blue and add six cupcakes? Please show me the new price before I confirm.'
+                : 'Could we add 15 medium shirts? Please tell me the price difference before I confirm.'
+            }
           />
         </Field>
         <ErrorNotice message={action.error} />
@@ -789,6 +803,8 @@ function ShareModal({
   revision?: Revision;
   onClose: () => void;
 }) {
+  const { session } = useAuth();
+  const demo = session?.auth_method === 'demo';
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -803,7 +819,10 @@ function ShareModal({
     }
   };
   return (
-    <Modal title="The customer review link is ready." onClose={onClose}>
+    <Modal
+      title={demo ? 'Now try the customer’s side.' : 'The customer review link is ready.'}
+      onClose={onClose}
+    >
       <div className="modal-body">
         <Notice
           tone="success"
@@ -813,8 +832,9 @@ function ShareModal({
               : 'Proposal shared successfully.'
           }
         >
-          Send this link to the customer using your usual channel. No email or message has been sent
-          by OrderToWork.
+          {demo
+            ? 'Open the customer view below and approve the sample change. Then return here to record the deposit and release work. No message is sent.'
+            : 'Send this link to the customer using your usual channel. No email or message has been sent by OrderToWork.'}
         </Notice>
         <Field
           label="Private customer link"
@@ -837,14 +857,14 @@ function ShareModal({
         <ErrorNotice message={copyError} />
         <div className="form-actions">
           <a
-            className="button button-secondary"
+            className={`button button-${demo ? 'primary' : 'secondary'}`}
             href={share.url}
             target="_blank"
             rel="noopener noreferrer"
           >
-            Open customer view <ExternalLink size={15} />
+            {demo ? 'Review as the customer' : 'Open customer view'} <ExternalLink size={15} />
           </a>
-          <Button variant="primary" onClick={onClose}>
+          <Button variant={demo ? 'secondary' : 'primary'} onClick={onClose}>
             Done
           </Button>
         </div>
@@ -867,12 +887,14 @@ function DepositModal({
   onClose: () => void;
   onSaved: (order: OrderDetail) => Promise<void>;
 }) {
+  const { session } = useAuth();
+  const demo = session?.auth_method === 'demo';
   const due = Math.max(
     0,
     (order.accepted_revision?.terms.required_deposit_cents ?? 0) - order.deposit_paid_cents,
   );
   const [amount, setAmount] = useState(due ? (due / 100).toFixed(2) : '');
-  const [reference, setReference] = useState('');
+  const [reference, setReference] = useState(demo ? 'Demo receipt' : '');
   const [confirmed, setConfirmed] = useState(false);
   const key = useRef(newIdempotencyKey());
   const action = useAction();
@@ -890,11 +912,17 @@ function DepositModal({
     );
   };
   return (
-    <Modal title="Record a received deposit" onClose={onClose}>
+    <Modal title={demo ? 'Record a sample deposit' : 'Record a received deposit'} onClose={onClose}>
       <form className="modal-body form-stack" onSubmit={submit}>
-        <Notice title="This records a payment you already received." tone="warning">
-          It does not charge the customer or transfer money. Use a bank, cash, or payment-processor
-          reference so the record can be reconciled.
+        <Notice
+          title={
+            demo ? 'No money moves in this demo.' : 'This records a payment you already received.'
+          }
+          tone={demo ? 'info' : 'warning'}
+        >
+          {demo
+            ? 'Record the sample deposit to see how payment requirements control the production handoff. In a business account, this records money already received.'
+            : 'It does not charge the customer or transfer money. Use a bank, cash, or payment-processor reference so the record can be reconciled.'}
         </Notice>
         <div className="form-row">
           <Field
@@ -943,7 +971,9 @@ function DepositModal({
             required
           />
           <span>
-            I confirm this money has been received{order.is_demo ? ' for this sample order' : ''}.
+            {demo
+              ? 'Record this as a simulated payment for the sample order.'
+              : `I confirm this money has been received${order.is_demo ? ' for this sample order' : ''}.`}
           </span>
         </label>
         <ErrorNotice message={action.error} />
