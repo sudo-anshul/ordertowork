@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ordertowork
+      POSTGRES_PASSWORD: ordertowork
+      POSTGRES_DB: ordertowork
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - ordertowork-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ordertowork -d ordertowork"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  ordertowork-postgres:
