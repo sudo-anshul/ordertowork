@@ -8,10 +8,17 @@ version = "0.1.0"
 description = "A Strands-powered workbench for made-to-order businesses"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-  "fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1", "sqlalchemy>=2.0.40,<3",
-  "psycopg[binary]>=3.2,<4", "alembic>=1.16,<2", "pydantic-settings>=2.9,<3",
-  "strands-agents==1.55.0", "boto3>=1.38,<2", "httpx>=0.28,<1",
-  "PyJWT[crypto]>=2.10,<3", "python-multipart>=0.0.20,<1", "authlib>=1.6,<2"
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "sqlalchemy>=2.0.40,<3",
+  "psycopg[binary]>=3.2,<4",
+  "alembic>=1.16,<2",
+  "pydantic-settings>=2.9,<3",
+  "strands-agents==1.55.0",
+  "boto3>=1.38,<2",
+  "httpx>=0.28,<1",
+  "PyJWT[crypto]>=2.10,<3",
+  "python-multipart>=0.0.20,<1",
 ]
 
 [dependency-groups]

@@ -16,7 +16,9 @@ def test_health_and_security_headers():
 
 def test_cross_origin_mutations_rejected():
     client = TestClient(create_app())
-    response = client.post("/api/auth/development-login", headers={"origin": "https://attacker.invalid"})
+    response = client.post(
+        "/api/auth/development-login", headers={"origin": "https://attacker.invalid"}
+    )
     assert response.status_code == 403
 
 

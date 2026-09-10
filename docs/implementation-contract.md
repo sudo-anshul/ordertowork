@@ -1,15 +1,25 @@
-# Shared implementation contract
+# Development conventions
 
-Python/FastAPI + sync SQLAlchemy2; React/Vite TypeScript. Root owns config.py, db.py, core models (User, Workspace, Membership), main.py, Strands job worker, file service, integration, CI and Git commits. Domain agent owns models/domain.py, services/orders.py, services/profiles.py, api/orders.py, API contract and domain tests. Identity agent owns models/auth.py, services/auth.py, api/auth.py, api/workspaces.py, auth tests. Frontend agent owns frontend/**.
+OrderToWork is a Python/FastAPI service and a React/TypeScript client. PostgreSQL owns business state. Strands coordinates read-only tools and produces a structured request interpretation; deterministic services price proposals and commit approved work.
 
-Base/new_id/utcnow/get_db in ordertowork.db. Settings/get_settings in ordertowork.config, env prefix OTW_. Shared core models in models/core.py; use UUID strings and timezone-aware timestamps. No service may trust tenant IDs or principal IDs supplied by an LLM. Never hold DB transaction over inference. Persistent money uses integer cents, deposit basis points. Agent must not approve customer terms or record payments.
+## Layout
 
-All API paths /api. Identity: GET /auth/config; GET /auth/me -> {user, workspaces, csrf_token}; POST /auth/development-login {email,name} only development; GET /auth/login; GET /auth/callback; POST /auth/logout. Workspace GET/POST /workspaces and GET/PATCH /workspaces/{workspace_id}; POST can include profile merchandise|bakery and seed_demo bool. Never make seed fixtures silently real.
+- `backend/ordertowork/api`: HTTP validation, authentication, response mapping and transaction boundaries.
+- `backend/ordertowork/services`: domain operations, provider integrations and durable job scheduling.
+- `backend/ordertowork/models`: SQLAlchemy persistence, split into identity, orders and operations.
+- `backend/ordertowork/worker.py`: leased background analysis with bounded inference and stale-result rejection.
+- `frontend/src`: typed API client, reusable interface components and pages.
+- `migrations`: reviewed Alembic revisions; migrations are run once per release.
+- `backend/tests`: deterministic, HTTP, SDK-contract and isolated PostgreSQL concurrency tests.
 
-Auth agent provides services.auth Actor dataclass with user User and csrf_token; get_actor(request, db=Depends(get_db)) dependency; require_membership(db, actor, workspace_id, roles=("owner","operator")) -> Membership; mutations using session cookie validate X-CSRF-Token in get_actor. Identity agent coordinate exact auth response with frontend. Workspace output {id,name,profile,currency,timezone,deposit_bps,role,status}. App base is OTW_APP_URL, development normally http://localhost:5173; Vite proxies /api to :8000.
+## Rules
 
-Domain APIs under /workspaces/{workspace_id}: GET /orders, POST /orders, GET /orders/{order_id}, POST /orders/{order_id}/messages, POST /orders/{order_id}/proposals, POST /orders/{order_id}/proposals/{proposal_id}/share, POST /orders/{order_id}/deposits, GET /orders/{order_id}/ticket, POST /orders/{order_id}/production/start, GET /resources. Public /customer/{token} GET and /customer/{token}/approve POST, /request-change POST with safe deliberate POST semantics. Domain agent defines DTOs in docs/api-contract.md ASAP and notifies frontend/root; frontend adapts to that contract. New incoming messages should enqueue jobs; root provides queue bridge after agent model defined.
+Use integer cents for money, basis points for deposits, timezone-aware timestamps and explicit units for resources. Product/profile configuration supplies deterministic prices and requirements. Every business-owned operation checks the authenticated principal's membership and scope. Model-supplied IDs never grant permissions.
 
-Data invariants: accepted revision vs pending proposals separate; exploratory alternatives do not consume resources; exact content/version/hash-scoped approval; atomic stock/capacity replacement with old holds preserved on failure; idempotent approval/deposit; production requires current approved revision + reservations + sufficient deposit + no hold; production-started changes need owner resolution. All records tenant scoped; customer view excludes internal data. Support both original accepted seed and new order requiring acceptance. Feasibility, pricing and tickets are deterministic server code. API errors use HTTPException detail {code,message} where possible; UI must handle both string/object detail.
+Persist customer messages separately from interpreted facts. Keep accepted revisions, pending proposals, payments, reservations and production holds distinct. Bind approval to immutable content and its base revision. Never hold database locks across model calls or human waits. Use bounded, idempotent operations and preserve the previous agreement when a replacement fails.
 
-Canonical fixtures are ../.. /work/ordertowork/demo-fixtures.json from repo (parent research workspace work/...), and design reference ../ordertowork-design-concept.html. Better absolute paths are in agent assignments. Root runs tests/commits/pushes. Agents should not commit or push. Coordinate shared files before edits.
+Customer links grant access only to their proposal. Protect their tokens as bearer credentials. Workspace owners and production operators have separate views; platform administration exposes operational metadata, not general business-content access.
+
+Tests using SQLite establish deterministic behavior only. PostgreSQL concurrency checks use unique temporary schemas and run when `OTW_TEST_DATABASE_URL` is supplied. A scripted Strands model verifies SDK integration; only an actual account-configured Bedrock run establishes live model behavior.
+
+Run relevant tests and lint before a milestone commit. Keep credentials, local state, dependencies, generated builds and recordings out of Git. See [HTTP contract](api-contract.md), [architecture](architecture.md), and [deployment](../deploy/README.md).

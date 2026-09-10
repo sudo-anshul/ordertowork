@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 
+from ordertowork.api import auth, files, jobs, orders, workspaces
 from ordertowork.config import get_settings
 from ordertowork.db import session_factory
 
@@ -19,7 +20,10 @@ def create_app() -> FastAPI:
         origin = request.headers.get("origin")
         app_origin = urlsplit(settings.app_url)
         expected_origin = f"{app_origin.scheme}://{app_origin.netloc}"
-        if request.method not in {"GET", "HEAD", "OPTIONS"} and origin and origin != expected_origin:
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and (
+            (origin and origin != expected_origin)
+            or request.headers.get("sec-fetch-site") == "cross-site"
+        ):
             return JSONResponse(
                 {"detail": {"code": "origin_rejected", "message": "This origin is not allowed."}},
                 status_code=403,
@@ -29,7 +33,9 @@ def create_app() -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "no-cache"
+        response.headers["Cache-Control"] = (
+            "no-store" if request.url.path.startswith("/api/") else "no-cache"
+        )
         if settings.environment == "production":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             response.headers["Content-Security-Policy"] = (
@@ -52,7 +58,23 @@ def create_app() -> FastAPI:
             return JSONResponse({"status": "unavailable"}, status_code=503)
         return {"status": "ready"}
 
-    # Application routers are registered here as each implementation lands.
+    @app.get("/api/runtime")
+    def runtime():
+        settings = get_settings()
+        return {
+            "agent_mode": settings.agent_mode,
+            "auth_mode": settings.auth_mode,
+            "environment": settings.environment,
+            "live_ai_configured": settings.agent_mode == "bedrock"
+            and bool(settings.bedrock_model_id),
+        }
+
+    app.include_router(auth.router)
+    app.include_router(workspaces.router)
+    app.include_router(workspaces.platform_router)
+    app.include_router(orders.router, prefix="/api")
+    app.include_router(jobs.router)
+    app.include_router(files.router)
 
     @app.get("/{path:path}", include_in_schema=False)
     def frontend(path: str):
@@ -65,7 +87,9 @@ def create_app() -> FastAPI:
         index = dist / "index.html"
         if index.is_file() and (not Path(path).suffix or path.startswith("customer/")):
             return FileResponse(index)
-        return JSONResponse({"detail": "Frontend is not built. Run npm run dev in frontend."}, status_code=404)
+        return JSONResponse(
+            {"detail": "Frontend is not built. Run npm run dev in frontend."}, status_code=404
+        )
 
     return app
 
