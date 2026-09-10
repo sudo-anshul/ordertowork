@@ -1,13 +1,14 @@
 # Implementation verification
 
-Verified locally on 10 September 2026. Local development uses PostgreSQL 17, a real FastAPI service and worker, and the React interface. No AWS resources were provisioned and no live model calls were made.
+Local verification was expanded on 10 September 2026. Development uses PostgreSQL 17, a real FastAPI service and worker, and the React interface. AWS service configuration is now available; see the separate [live provider verification procedure](live-aws-checks.md). The checks below do not establish Bedrock access or model accuracy.
 
 ## Automated application checks
 
-- **71 backend tests passed** with `OTW_TEST_DATABASE_URL` configured.
-- Six of these use actual PostgreSQL: a competing-approval race, three scheduler/lease concurrency cases, and complete HTTP-to-worker-to-production flows for both business profiles. They use temporary schemas and remove their own test data.
+- **94 backend tests passed** with `OTW_TEST_DATABASE_URL` configured.
+- Seven of these use actual PostgreSQL: a competing-approval race, three scheduler/lease concurrency cases, an atomic global paid-run budget race, and complete HTTP-to-worker-to-production flows for both business profiles. They use temporary schemas and remove their own test data.
 - Remaining tests use isolated databases and cover identity, CSRF/origin checks, tenant and role boundaries, final-owner protection, stale proposals, exact approval, manual-deposit idempotency, production gates, attachment access and conservative reference interpretation.
 - The Strands SDK integration test uses a scripted model with real application tools and structured output. This verifies the SDK/tool contract, not Bedrock access or model accuracy.
+- Added checks cover bounded Strands turns/tokens, independent session snapshots, exact final previews, partial usage telemetry, live-provider error handling, SigV4 storage contracts and actual Cognito HTTP request serialization with mocked provider transport.
 - Ruff passed for backend, migrations, scripts and deployment code. Alembic reports no schema drift against the migrated PostgreSQL database.
 - The strict TypeScript/Vite production build passed. The full npm audit reported zero known vulnerabilities at verification time.
 
@@ -46,4 +47,4 @@ See [container evidence](../deploy/validation.md) and the reproducible [smoke sc
 
 ## Pending live validation
 
-Cognito login against an actual pool, permitted Bedrock inference, private S3 round-trips, deployed AWS networking/IAM, backups/restoration and realistic customer feedback remain pending. Reference mode and mocked provider tests do not establish any of those results. See the [deployment runbook](../deploy/README.md) for activation after AWS credentials and credits are available.
+The initial local implementation left Cognito login, permitted Bedrock inference, private S3 round-trips, deployed networking/IAM and backup recovery pending. Record subsequent live checks separately with the deployment release. Reference mode and mocked provider tests cannot establish those results. Bedrock account verification and real customer feedback must not be inferred from a passing infrastructure health check.

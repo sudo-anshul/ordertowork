@@ -1,6 +1,9 @@
 .env
 .env.*
 !.env.example
+compose.env
+runtime.env
+deploy/*.local.json
 .venv/
 .data/
 __pycache__/

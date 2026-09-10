@@ -3,6 +3,9 @@
 .venv
 .env
 .env.*
+compose.env
+runtime.env
+deploy/*.local.json
 !.env.example
 **/__pycache__
 **/*.py[cod]

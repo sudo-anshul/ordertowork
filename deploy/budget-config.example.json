@@ -1,0 +1,17 @@
+{
+  "OTW_IMAGE": "123456789012.dkr.ecr.us-east-1.amazonaws.com/ordertowork@sha256:REPLACE_WITH_64_HEX_CHARACTERS",
+  "OTW_DOMAIN": "orders.example.com",
+  "OTW_AWS_REGION": "us-east-1",
+  "OTW_S3_BUCKET": "replace-with-private-application-bucket",
+  "OTW_COGNITO_REGION": "us-east-1",
+  "OTW_COGNITO_USER_POOL_ID": "us-east-1_REPLACE",
+  "OTW_COGNITO_CLIENT_ID": "REPLACE",
+  "OTW_COGNITO_DOMAIN": "https://REPLACE.auth.us-east-1.amazoncognito.com",
+  "OTW_BEDROCK_MODEL_ID": "us.amazon.nova-lite-v1:0",
+  "OTW_MAX_DAILY_AGENT_JOBS": "20",
+  "OTW_MAX_JOB_ATTEMPTS": "1",
+  "OTW_MAX_DAILY_BEDROCK_ATTEMPTS": "100",
+  "OTW_BEDROCK_MAX_OUTPUT_TOKENS": "1024",
+  "OTW_AGENT_MAX_TURNS": "5",
+  "OTW_AGENT_MAX_TOTAL_TOKENS": "18000"
+}

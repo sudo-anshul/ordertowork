@@ -1,6 +1,6 @@
 # Deployment runbook
 
-This package prepares OrderToWork for deployment. It does not provision AWS resources. The owner has not yet supplied AWS authentication or available credits. Cognito login, Bedrock invocation, S3 access and an AWS deployment must therefore be verified after account access is available. Local verification is recorded in `validation.md` when performed; a runbook or valid JSON policy is not evidence of a working cloud deployment.
+The current $50 hackathon deployment uses the [single-host runbook](budget-README.md), [AWS service setup](../docs/aws-services.md) and `aws_budget_host.py`. That setup avoids an idle load balancer, NAT gateway and managed database. This document describes the more expensive managed ECS/RDS topology as a future option. Provider and deployment validation must be recorded separately; a runbook or valid JSON policy is not evidence of a working cloud deployment.
 
 ## Container and CI
 

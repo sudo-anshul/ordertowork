@@ -1,0 +1,28 @@
+{
+	admin off
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>headers delete
+			}
+		}
+	}
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 2m
+		}
+	}
+}
+
+{$OTW_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 6MB
+	}
+	# Access logging stays disabled: customer capability tokens occur in URLs.
+	reverse_proxy api:8000
+}

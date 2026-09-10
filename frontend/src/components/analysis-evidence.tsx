@@ -38,6 +38,7 @@ export function AnalysisEvidence({
     read_order_context: 'Read order facts',
     preview_change: 'Check stock, capacity and price',
     reference_interpreter: 'Reference interpretation',
+    bedrock_usage: 'AI usage',
   };
   const mode =
     job.mode === 'bedrock'
@@ -64,7 +65,7 @@ export function AnalysisEvidence({
           {job.mode === 'reference'
             ? 'This run used deterministic reference interpretation. No AI model was called.'
             : job.mode === 'bedrock'
-              ? 'This run used the Strands agent with Bedrock. The checks below are recorded tool executions.'
+              ? 'This run was configured for Strands with Bedrock. The record below shows tool checks and any reported AI usage.'
               : 'The server did not record the execution mode for this run.'}
         </p>
         {events.length ? (
@@ -86,6 +87,23 @@ export function AnalysisEvidence({
                     <strong>{labels[event.tool] ?? titleCase(event.tool)}</strong>
                     {event.tool === 'read_order_context' && (
                       <p>Read the saved order and business facts.</p>
+                    )}
+                    {event.tool === 'bedrock_usage' && (
+                      <>
+                        <p>
+                          {typeof result.input_tokens === 'number'
+                            ? result.input_tokens.toLocaleString()
+                            : 'Unreported'}{' '}
+                          input tokens ·{' '}
+                          {typeof result.output_tokens === 'number'
+                            ? result.output_tokens.toLocaleString()
+                            : 'unreported'}{' '}
+                          output tokens
+                        </p>
+                        {result.usage_complete === false && (
+                          <p>Usage may be incomplete because the request did not finish.</p>
+                        )}
+                      </>
                     )}
                     {event.tool === 'reference_interpreter' &&
                       typeof result.intent === 'string' && (

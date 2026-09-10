@@ -80,7 +80,11 @@ GitHub Actions runs backend checks with PostgreSQL, the frontend build and a com
 
 The app includes a non-root production Docker image, Cognito OAuth code/PKCE sign-in, Bedrock through Strands, private S3 storage, IAM examples and an [AWS deployment runbook](deploy/README.md). The same image runs the API and the worker as separate services. Production serves the built React app from FastAPI behind an HTTPS endpoint.
 
-AWS provisioning is intentionally deferred until credentials and credits are available. Changing an environment variable alone is not a verified deployment. Follow the runbook, configure a permitted Bedrock model and validate the real provider flow before inviting customers.
+For the $50 hackathon allowance, use the [single-host deployment](deploy/budget-README.md) and [AWS service setup](docs/aws-services.md). They provide Cognito, private S3, an account cost budget and one small ARM server running PostgreSQL, the API and the worker. The managed ECS/RDS topology is a later option with substantially higher idle costs.
+
+Live verification is documented separately from configuration in [AWS checks](docs/live-aws-checks.md). Bedrock requires AWS account verification and model access even after credits are redeemed. A failed model call remains a failed analysis; the app does not silently replace it with reference interpretation.
+
+Paid jobs have a global daily attempt allowance across all workspaces, including retries. `OTW_MAX_DAILY_BEDROCK_ATTEMPTS=0` pauses paid work. Per-run output, turn and token limits reduce exposure; the token limit is checked between turns and is not an AWS dollar spending cap. The execution record displays reported input/output tokens.
 
 Never commit credentials, `.env`, `.data`, database dumps or real customer files. The repository ignores local secrets and runtime data.
 
