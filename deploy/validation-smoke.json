@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-09-10T05:25:38.089210+00:00",
+  "image_id": "sha256:2d95bae793ab561b19165762904dcd6cf1b517529d7af7b56d493db0b5914335",
+  "platform": "linux/arm64",
+  "aws_called": false,
+  "database_mutations": false,
+  "checks": {
+    "api_health": "passed",
+    "local_postgresql_readiness": "passed",
+    "spa_fallback_assets_and_404s": "passed",
+    "anonymous_and_development_auth_rejected": "passed",
+    "non_root_read_only_runtime_and_cli": "passed",
+    "existing_database_migration_head": "3edc2a397b7c (head)",
+    "access_logs_disabled": "passed",
+    "readiness_without_database_is_503": "passed"
+  }
+}

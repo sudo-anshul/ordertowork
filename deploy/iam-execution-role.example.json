@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrAuthorization",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PullApplicationImage",
+      "Effect": "Allow",
+      "Action": ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage"],
+      "Resource": "arn:aws:ecr:REPLACE_REGION:REPLACE_ACCOUNT_ID:repository/ordertowork"
+    },
+    {
+      "Sid": "WriteApplicationLogs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:REPLACE_REGION:REPLACE_ACCOUNT_ID:log-group:/ecs/ordertowork/*:*"
+    },
+    {
+      "Sid": "ReadNamedDeploymentSecrets",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": [
+        "arn:aws:secretsmanager:REPLACE_REGION:REPLACE_ACCOUNT_ID:secret:ordertowork/production/database-*",
+        "arn:aws:secretsmanager:REPLACE_REGION:REPLACE_ACCOUNT_ID:secret:ordertowork/production/cognito-client-*"
+      ]
+    }
+  ]
+}

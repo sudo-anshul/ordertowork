@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AgentSessionObjectsOnly",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::REPLACE_BUCKET/agent-sessions/*"
+    },
+    {
+      "Sid": "ListAgentSessionPrefixOnly",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::REPLACE_BUCKET",
+      "Condition": {"StringLike": {"s3:prefix": ["agent-sessions", "agent-sessions/*"]}}
+    },
+    {
+      "Sid": "InvokeChosenBedrockResourcesOnly",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": [
+        "arn:aws:bedrock:REPLACE_REGION::foundation-model/REPLACE_MODEL_ID",
+        "arn:aws:bedrock:REPLACE_REGION:REPLACE_ACCOUNT_ID:inference-profile/REPLACE_PROFILE_ID"
+      ]
+    }
+  ]
+}
