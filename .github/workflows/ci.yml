@@ -37,7 +37,7 @@ jobs:
       OTW_APP_URL: http://localhost:5173
       OTW_AGENT_MODE: reference
       OTW_STORAGE_MODE: local
-      OTW_DATA_DIR: ${{ runner.temp }}/ordertowork-data
+      OTW_DATA_DIR: /tmp/ordertowork-data
       AWS_EC2_METADATA_DISABLED: "true"
     steps:
       - uses: actions/checkout@v4
