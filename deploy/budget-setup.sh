@@ -18,9 +18,10 @@ if [[ ${ID} != ubuntu || ${VERSION_ID} != 24.04 || $(dpkg --print-architecture) 
   exit 1
 fi
 python3 "$OTW_DEPLOY_SOURCE/budget-config.py" validate "$OTW_CONFIG_FILE"
+bash "$OTW_DEPLOY_SOURCE/budget-install-aws.sh"
 export DEBIAN_FRONTEND=noninteractive
 apt-get -o DPkg::Lock::Timeout=120 update
-apt-get -o DPkg::Lock::Timeout=120 install -y docker.io docker-compose-v2 awscli ca-certificates
+apt-get -o DPkg::Lock::Timeout=120 install -y docker.io docker-compose-v2 ca-certificates
 systemctl enable --now docker
 
 if docker volume inspect ordertowork-budget-postgres >/dev/null 2>&1 && \
@@ -30,7 +31,7 @@ if docker volume inspect ordertowork-budget-postgres >/dev/null 2>&1 && \
 fi
 install -d -m 0700 "$OTW_INSTALL_DIR" "$OTW_INSTALL_DIR/deploy" /var/backups/ordertowork
 for OTW_RELEASE_FILE in budget-compose.yaml budget-Caddyfile budget-init-db.sh budget-config.py \
-    budget-backup.sh budget-setup.sh; do
+    budget-backup.sh budget-setup.sh budget-install-aws.sh; do
   if [[ "$OTW_DEPLOY_SOURCE/$OTW_RELEASE_FILE" != "$OTW_INSTALL_DIR/deploy/$OTW_RELEASE_FILE" ]]; then
     install -m 0600 "$OTW_DEPLOY_SOURCE/$OTW_RELEASE_FILE" "$OTW_INSTALL_DIR/deploy/$OTW_RELEASE_FILE"
   fi

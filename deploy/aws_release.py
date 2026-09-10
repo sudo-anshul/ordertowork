@@ -34,6 +34,7 @@ BUNDLE_FILES = (
     "budget-config.py",
     "budget-backup.sh",
     "budget-setup.sh",
+    "budget-install-aws.sh",
 )
 
 
@@ -269,9 +270,7 @@ def ssm_commands(region: str, bucket: str, key: str, tag: str, digest: str) -> l
         "flock -n 9 || { printf 'Another deployment is running.\\n' >&2; exit 1; }",
         "unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_PROFILE AWS_DEFAULT_PROFILE",
         "export DEBIAN_FRONTEND=noninteractive AWS_EC2_METADATA_DISABLED=false",
-        "if ! command -v aws >/dev/null 2>&1; then "
-        "apt-get -o DPkg::Lock::Timeout=120 update; "
-        "apt-get -o DPkg::Lock::Timeout=120 install -y awscli ca-certificates; fi",
+        "bash -c " + quote((DEPLOY / "budget-install-aws.sh").read_text()),
         f"install -d -m 0700 {quote(directory)}",
         f"aws s3 cp {quote('s3://' + bucket + '/' + key)} {quote(archive)} "
         f"--region {quote(region)} --only-show-errors",
