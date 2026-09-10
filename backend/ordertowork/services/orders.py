@@ -952,7 +952,7 @@ def approve_customer(db: Session, token: str, terms_hash: str, consent: bool) ->
         db,
         order,
         "customer_approved",
-        f"Customer approved exact revision {revision.number}. Resources were reserved atomically.",
+        f"Customer approved revision {revision.number}. Stock and capacity were reserved for this revision.",
         {
             "revision_id": revision.id,
             "terms_hash": revision.terms_hash,
@@ -1028,7 +1028,8 @@ def record_deposit(
         db,
         order,
         "deposit_recorded",
-        f"An owner recorded a payment of {amount_cents} cents. No payment was captured by OrderToWork.",
+        f"Recorded a received deposit of {get_workspace(db, workspace_id).currency} "
+        f"{amount_cents // 100:,}.{amount_cents % 100:02d}.",
         {"recorded_by": user_id, "reference": reference.strip()},
     )
     db.flush()
@@ -1055,8 +1056,26 @@ def production_ticket(db: Session, workspace_id: str, order_id: str) -> dict:
     }
 
 
-def start_production(db: Session, workspace_id: str, order_id: str) -> dict:
+def start_production(db: Session, workspace_id: str, order_id: str, expected_revision: int) -> dict:
+    if (
+        isinstance(expected_revision, bool)
+        or not isinstance(expected_revision, int)
+        or expected_revision < 1
+    ):
+        fail(
+            "invalid_revision",
+            "Supply the revision number displayed on the production ticket.",
+            422,
+        )
     order = get_order(db, workspace_id, order_id, lock=True)
+    accepted = (
+        db.get(OrderRevision, order.accepted_revision_id) if order.accepted_revision_id else None
+    )
+    if not accepted or accepted.number != expected_revision:
+        fail(
+            "stale_revision",
+            "The accepted revision changed. Reload and review the current production ticket before starting work.",
+        )
     production_ticket(db, workspace_id, order_id)
     if order.production_status != "started":
         order.production_status = "started"

@@ -6,6 +6,7 @@ from ordertowork.config import get_settings
 from ordertowork.db import get_db, utcnow
 from ordertowork.models.auth import AuthAuditEvent, AuthSession
 from ordertowork.models.core import Membership, User, Workspace
+from ordertowork.models.jobs import Job
 from ordertowork.services.auth import (
     Actor,
     actor_payload,
@@ -326,14 +327,34 @@ def platform_overview(
     }
     workspaces = db.scalars(select(Workspace).order_by(Workspace.created_at.desc()).limit(100))
     events = db.scalars(select(AuthAuditEvent).order_by(AuthAuditEvent.created_at.desc()).limit(50))
+    job_counts = dict(db.execute(select(Job.status, func.count()).group_by(Job.status)).all())
+    failed_jobs = db.scalars(
+        select(Job).where(Job.status == "failed").order_by(Job.updated_at.desc()).limit(20)
+    )
     return {
         "counts": counts,
+        "jobs": {
+            status: job_counts.get(status, 0)
+            for status in ("queued", "running", "succeeded", "failed")
+        },
+        "recent_failed_jobs": [
+            {
+                "id": job.id,
+                "workspace_id": job.workspace_id,
+                "status": job.status,
+                # Support metadata never includes request content or provider exception text.
+                "error": "Analysis did not complete. The workspace owner can review and retry.",
+                "updated_at": job.updated_at.isoformat(),
+            }
+            for job in failed_jobs
+        ],
         "workspaces": [
             {
                 "id": workspace.id,
                 "name": workspace.name,
                 "profile": workspace.profile,
                 "status": workspace.status,
+                "is_demo": workspace.is_demo,
                 "created_at": workspace.created_at.isoformat(),
             }
             for workspace in workspaces

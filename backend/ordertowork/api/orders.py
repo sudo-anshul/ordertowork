@@ -53,6 +53,10 @@ class DepositInput(StrictInput):
     idempotency_key: str = Field(min_length=1, max_length=100)
 
 
+class ProductionStartInput(StrictInput):
+    expected_revision: int = Field(ge=1, strict=True)
+
+
 class HoldInput(StrictInput):
     reason: str | None = Field(default=None, max_length=500)
 
@@ -226,11 +230,12 @@ def ticket(
 def start(
     workspace_id: str,
     order_id: str,
+    body: ProductionStartInput,
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_actor),
 ):
     membership = require_membership(db, actor, workspace_id)
-    result = service.start_production(db, workspace_id, order_id)
+    result = service.start_production(db, workspace_id, order_id, body.expected_revision)
     if membership.role == "operator":
         result = service.operational_ticket(service.production_ticket(db, workspace_id, order_id))
     db.commit()

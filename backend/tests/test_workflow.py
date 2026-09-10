@@ -83,7 +83,7 @@ def test_real_http_flow_queued_analysis_customer_approval_and_ticket(
     ticket = client.get(path + "/ticket").json()
     assert ticket["terms"]["total_cents"] == total
     assert ticket["balance_cents"] == total // 2
-    assert client.post(path + "/production/start", json={}).status_code == 200
+    assert client.post(path + "/production/start", json={"expected_revision": ticket["revision"]}).status_code == 200
 
 
 def test_job_claim_serializes_order_and_recovers_expired_lease(integrated):

@@ -237,7 +237,7 @@ def test_started_production_consumes_holds_and_refuses_automatic_changes(domain_
     workspace, order = demo(domain_db)
     revision = options(domain_db, order)[0]
     token = share(domain_db, workspace, order, revision)
-    service.start_production(domain_db, workspace.id, order.id)
+    service.start_production(domain_db, workspace.id, order.id, expected_revision=1)
     domain_db.commit()
     assert order.production_status == "started"
     assert all(row[3] == "consumed" for row in active_holds(domain_db, order))

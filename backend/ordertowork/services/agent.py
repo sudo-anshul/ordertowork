@@ -7,7 +7,7 @@ cannot accept a proposal, change business rules, or write a payment record.
 import json
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
 from ordertowork.config import get_settings
@@ -25,9 +25,11 @@ class RequestInterpretation(BaseModel):
     intent: Literal[
         "change_request", "new_order", "question", "approval", "cancellation", "unknown"
     ]
-    quantity: int | None = Field(default=None, ge=1, le=10000)
+    quantity: int | None = Field(default=None, ge=1, le=10000, strict=True)
     variant: str | None = Field(default=None, max_length=100)
-    sizes: dict[str, int] | None = None
+    sizes: dict[str, Annotated[int, Field(strict=True, ge=0, le=10000)]] | None = Field(
+        default=None, max_length=20
+    )
     pickup_at: str | None = Field(default=None, max_length=80)
     specification: dict[str, str] | None = None
     evidence: list[Evidence] = Field(default_factory=list, max_length=20)
@@ -47,6 +49,14 @@ def base_terms(snapshot: dict) -> dict:
     return min(revisions, key=lambda r: r["number"])["terms"] if revisions else {}
 
 
+def reference_clarification(message: str, detail: str) -> RequestInterpretation:
+    return RequestInterpretation(
+        intent="unknown",
+        missing_fields=[detail],
+        evidence=[Evidence(field="request", quote=message[:1000])],
+    )
+
+
 def reference_interpretation(snapshot: dict, message: str) -> RequestInterpretation:
     """Conservative, deliberately limited parser for local integration checks.
 
@@ -57,13 +67,20 @@ def reference_interpretation(snapshot: dict, message: str) -> RequestInterpretat
     text = message.lower()
     if text.lstrip().startswith("{"):
         return RequestInterpretation.model_validate(json.loads(message))
+    # Reference mode deliberately declines language it cannot interpret reliably.
+    # It must not silently discard a negation, an alternate option or an instruction.
+    if re.search(r"\b(?:do not|don't|don’t|not|never|instead of|rather than)\b", text):
+        return reference_clarification(
+            message,
+            "This request includes a negation or comparison. Review its exact meaning manually.",
+        )
     if re.search(r"\b(cancel|cancelled|canceled)\b", text):
         return RequestInterpretation(
-            intent="cancellation", evidence=[Evidence(field="intent", quote=message)]
+            intent="cancellation", evidence=[Evidence(field="intent", quote=message[:1000])]
         )
     if re.fullmatch(r"\s*(yes|approved?|confirm(ed)?|looks good)[.!\s]*", text):
         return RequestInterpretation(
-            intent="approval", evidence=[Evidence(field="intent", quote=message)]
+            intent="approval", evidence=[Evidence(field="intent", quote=message[:1000])]
         )
     quantity = base.get("quantity")
     sizes = dict(base.get("sizes", {}))
@@ -71,6 +88,14 @@ def reference_interpretation(snapshot: dict, message: str) -> RequestInterpretat
     missing: list[str] = []
     add = re.search(r"\badd\s+(\d+)\s*(small|medium|large|s\b|m\b|l\b)?", text)
     total = re.search(r"(?:make\s+(?:it|that)\s+|(?:need|want|order)\s+)(\d+)\b", text)
+    if (
+        (add and total)
+        or len(re.findall(r"\badd\s+\d+", text)) > 1
+        or len(re.findall(r"\d+\s*(?:small|medium|large|s\b|m\b|l\b)", text)) > 1
+    ):
+        return reference_clarification(
+            message, "Multiple quantity instructions need an exact final total and size breakdown."
+        )
     if add and quantity:
         delta = int(add.group(1))
         quantity += delta
@@ -88,22 +113,95 @@ def reference_interpretation(snapshot: dict, message: str) -> RequestInterpretat
     products = snapshot.get("products", [])
     product = next((p for p in products if p.get("id") == base.get("product_id")), {})
     variants = product.get("variants", ["navy", "charcoal", "vanilla"])
+    mentioned_variants = [
+        candidate
+        for candidate in variants
+        if re.search(r"\b" + re.escape(candidate.lower()) + r"\b", text)
+    ]
+    if len(mentioned_variants) > 1:
+        return reference_clarification(
+            message,
+            "More than one variant is mentioned. Confirm which variant belongs in the requested option.",
+        )
+    # The reference harness can preserve explicitly unchanged specifications, but
+    # cannot infer recipe/design/material changes from partial free text.
+    specification = base.get("specification", {})
+    known_fields = {
+        "icing": specification.get("icing"),
+        "flavor": variant,
+        "recipe": specification.get("recipe"),
+        "proof": specification.get("proof"),
+        "placement": specification.get("placement"),
+        "ink": specification.get("ink_colors"),
+    }
+    for field, value in known_fields.items():
+        noun = r"flavou?r" if field == "flavor" else re.escape(field)
+        if re.search(r"\b" + noun + r"\b", text):
+            unchanged = re.search(r"\bsame\s+(?:[a-z0-9]+\s+){0,3}" + noun + r"\b", text)
+            known_value = value and re.search(r"\b" + re.escape(str(value).lower()) + r"\b", text)
+            if not unchanged and not known_value:
+                return reference_clarification(
+                    message,
+                    f"Review the requested {field} specification manually before preparing options.",
+                )
+    if re.search(r"\b(?:artwork|design|allergy|allergies|allergen|gluten|dairy|vegan)\b", text):
+        return reference_clarification(
+            message,
+            "Artwork or dietary requirements need explicit owner review; this reference parser does not interpret them.",
+        )
     for candidate in variants:
         if re.search(r"\b" + re.escape(candidate.lower()) + r"\b", text):
             variant = candidate
             break
     pickup = base.get("pickup_at")
     weekdays = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-    day = next((i for i, name in enumerate(weekdays) if name in text), None)
+    mentioned_days = [i for i, name in enumerate(weekdays) if re.search(r"\b" + name + r"\b", text)]
+    if len(mentioned_days) > 1:
+        return reference_clarification(
+            message, "More than one pickup day is mentioned. Specify the exact requested date."
+        )
+    day = mentioned_days[0] if mentioned_days else None
     iso_date = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", text)
-    clock = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text)
-    hour = 12 if "noon" in text else None
+    clocks = list(re.finditer(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text))
+    clock = clocks[0] if clocks else None
+    if len(clocks) > 1 or len(re.findall(r"\b\d{4}-\d{2}-\d{2}\b", text)) > 1:
+        return reference_clarification(
+            message, "Multiple pickup dates or times need an exact requested pickup."
+        )
+    if re.search(r"\b(?:next|last|tomorrow|today|tonight|yesterday)\b", text) and not iso_date:
+        return reference_clarification(
+            message,
+            "Enter an explicit pickup date (YYYY-MM-DD); relative date qualifiers are unsupported in reference mode.",
+        )
+    noon = bool(re.search(r"\bnoon\b", text))
+    if noon and clock:
+        return reference_clarification(
+            message, "More than one pickup time is mentioned. Specify the exact requested time."
+        )
+    hour = 12 if noon else None
     minute = 0
     if clock:
-        hour, minute = int(clock.group(1)) % 12, int(clock.group(2) or 0)
+        clock_hour, clock_minute = int(clock.group(1)), int(clock.group(2) or 0)
+        if not 1 <= clock_hour <= 12 or not 0 <= clock_minute <= 59:
+            return reference_clarification(message, "Enter a valid pickup time, such as 3:30 pm.")
+        hour, minute = clock_hour % 12, clock_minute
         if clock.group(3) == "pm":
             hour += 12
     date = iso_date.group(1) if iso_date else None
+    if date:
+        try:
+            explicit_date = datetime.fromisoformat(date)
+        except ValueError:
+            return reference_clarification(message, "Enter a valid pickup date (YYYY-MM-DD).")
+        if day is not None and explicit_date.weekday() != day:
+            return reference_clarification(
+                message,
+                "The stated weekday and calendar date disagree. Confirm the requested pickup date.",
+            )
+    if hour is not None and date is None and day is None:
+        return reference_clarification(
+            message, "A time is mentioned without a pickup date. Confirm its exact pickup date."
+        )
     if day is not None and date is None:
         dates = []
         for resource in snapshot.get("resources", []):
@@ -144,6 +242,8 @@ def reference_interpretation(snapshot: dict, message: str) -> RequestInterpretat
                 "Please enter a specific quantity, variant or dated pickup change, or review the order manually."
             ],
         )
+    if quantity is None or not 1 <= quantity <= 10000:
+        return reference_clarification(message, "Confirm a final quantity between 1 and 10,000.")
     return RequestInterpretation(
         intent="change_request",
         quantity=quantity,

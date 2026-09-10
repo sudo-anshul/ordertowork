@@ -91,7 +91,9 @@ def test_operator_cannot_read_owner_data_or_mutate_commercial_terms(domain_api):
     assert ticket.status_code == 200
     assert "total_cents" not in ticket.json()["terms"]
     assert "deposit_paid_cents" not in ticket.json()
-    started = context.client.post(base + f"/orders/{context.order.id}/production/start", json={})
+    started = context.client.post(
+        base + f"/orders/{context.order.id}/production/start", json={"expected_revision": 1}
+    )
     assert started.status_code == 200
     assert started.json()["production_status"] == "started"
     assert "messages" not in started.json()
@@ -136,3 +138,81 @@ def test_public_approval_requires_boolean_true_and_exact_digest(domain_api):
     )
     assert again.status_code == 200
     assert again.json()["status"] == "already_approved"
+
+
+def test_operator_must_review_current_revision_before_starting_production(domain_api):
+    context = domain_api
+    base = f"/api/workspaces/{context.workspace.id}/orders/{context.order.id}"
+    context.actor = context.operator
+    reviewed_ticket = context.client.get(base + "/ticket").json()
+    assert reviewed_ticket["revision"] == 1
+
+    # Customer approves a new version while the operator still has revision 1 open.
+    context.actor = context.owner
+    response = context.client.post(base + f"/proposals/{context.option.id}/share", json={})
+    token = response.json()["url"].rsplit("/", 1)[1]
+    assert (
+        context.client.post(
+            f"/api/customer/{token}/approve",
+            json={"terms_hash": context.option.terms_hash, "consent": True},
+        ).status_code
+        == 200
+    )
+    top_up = context.option.terms["required_deposit_cents"] - 27000
+    assert (
+        context.client.post(
+            base + "/deposits",
+            json={
+                "amount_cents": top_up,
+                "reference": "Owner recorded bank transfer",
+                "idempotency_key": "updated-order-deposit",
+            },
+        ).status_code
+        == 200
+    )
+
+    context.actor = context.operator
+    stale = context.client.post(
+        base + "/production/start", json={"expected_revision": reviewed_ticket["revision"]}
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "stale_revision"
+    with context.factory() as db:
+        from ordertowork.models.domain import Reservation
+
+        assert db.get(Order, context.order.id).production_status == "not_started"
+        assert not db.scalar(
+            select(Reservation.id).where(
+                Reservation.order_id == context.order.id, Reservation.status == "consumed"
+            )
+        )
+
+    assert context.client.post(base + "/production/start", json={}).status_code == 422
+    assert (
+        context.client.post(
+            base + "/production/start", json={"expected_revision": True}
+        ).status_code
+        == 422
+    )
+    current_ticket = context.client.get(base + "/ticket").json()
+    started = context.client.post(
+        base + "/production/start", json={"expected_revision": current_ticket["revision"]}
+    )
+    assert started.status_code == 200
+    repeated = context.client.post(
+        base + "/production/start", json={"expected_revision": current_ticket["revision"]}
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["revision"] == current_ticket["revision"]
+    assert repeated.json()["production_status"] == "started"
+    with context.factory() as db:
+        from ordertowork.models.domain import OrderEvent
+
+        events = list(
+            db.scalars(
+                select(OrderEvent).where(
+                    OrderEvent.order_id == context.order.id, OrderEvent.type == "production_started"
+                )
+            )
+        )
+        assert len(events) == 1

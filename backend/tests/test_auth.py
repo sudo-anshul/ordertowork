@@ -13,6 +13,8 @@ from ordertowork.config import Settings
 from ordertowork.db import Base, get_db, utcnow
 from ordertowork.models.auth import AuthSession, OAuthLoginState
 from ordertowork.models.core import Membership, User, Workspace
+from ordertowork.models.domain import Order, SourceMessage
+from ordertowork.models.jobs import Job
 from ordertowork.services import auth as auth_service
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -31,6 +33,9 @@ def identity_app(monkeypatch):
         AuthSession.__table__,
         OAuthLoginState.__table__,
         auth_service.AuthAuditEvent.__table__,
+        Order.__table__,
+        SourceMessage.__table__,
+        Job.__table__,
     ]
     Base.metadata.create_all(engine, tables=tables)
     factory = sessionmaker(engine, expire_on_commit=False)
@@ -198,11 +203,37 @@ def test_cannot_self_assign_admin_or_reuse_stored_flag(identity_app):
         db.commit()
     assert client.get("/api/platform/overview").status_code == 403
     assert not client.get("/api/auth/me").json()["user"]["is_platform_admin"]
+    workspace_id, _ = workspace_for(identity_app, body["user"]["id"])
+    with identity_app.factory() as db:
+        order = Order(
+            workspace_id=workspace_id,
+            number="PRIVATE-ORDER",
+            customer_name="Private Customer",
+        )
+        db.add(order)
+        db.flush()
+        message = SourceMessage(
+            workspace_id=workspace_id, order_id=order.id, body="PRIVATE CUSTOMER MESSAGE"
+        )
+        db.add(message)
+        db.flush()
+        db.add(Job(
+            workspace_id=workspace_id, order_id=order.id, message_id=message.id,
+            status="failed", mode="reference", error="PRIVATE PROVIDER DETAILS",
+            tool_events=[{"private": "PRIVATE TOOL DATA"}],
+        ))
+        db.commit()
     identity_app.settings.platform_admin_subjects = "development:owner@example.com"
     response = client.get("/api/platform/overview")
     assert response.status_code == 200
     assert response.json()["counts"]["users"] == 1
     assert "csrf_token" not in str(response.json())
+    assert response.json()["jobs"] == {
+        "queued": 0, "running": 0, "succeeded": 0, "failed": 1
+    }
+    assert len(response.json()["recent_failed_jobs"]) == 1
+    assert "PRIVATE" not in response.text
+    assert response.headers["cache-control"] == "no-store"
 
 
 def test_membership_isolation_roles_and_immediate_revocation(identity_app):

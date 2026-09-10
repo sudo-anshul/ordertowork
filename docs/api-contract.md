@@ -27,7 +27,7 @@ All application routes below are prefixed `/api`. Monetary fields are integer ce
 - `POST /workspaces/{wid}/orders/{oid}/deposits` owner body `{amount_cents,reference,idempotency_key}` → `OrderDetail`. Manually recorded payment, never an actual payment capture. Both amount and key positive/nonempty; same key with different body is 409.
 - `POST /workspaces/{wid}/orders/{oid}/hold` owner body `{reason:string|null}` → `OrderDetail`. Explicit production hold, `null` clears.
 - `GET /workspaces/{wid}/orders/{oid}/ticket` → `{number,customer_name,revision,terms,deposit_paid_cents,balance_cents,reservations,is_demo,production_status}`. 409 until accepted current revision, reserved resources, sufficient deposit and no hold. Owner/operator; operators receive the stripped `OperationalTicket` below.
-- `POST /workspaces/{wid}/orders/{oid}/production/start` owner/operator body `{}` → `OrderDetail` for owner, `OperationalTicket` for operator. Requires ticket release gates. Cannot accept further changes automatically once started.
+- `POST /workspaces/{wid}/orders/{oid}/production/start` owner/operator body `{expected_revision:int}` → `OrderDetail` for owner, `OperationalTicket` for operator. Requires ticket release gates and the exact current accepted revision number displayed on the reviewed ticket. Returns 409 `stale_revision` if the agreement changed; the client must reload and review before retrying. Repeating a start for the same already-started revision is idempotent. Cannot accept further changes automatically once started.
 - `GET /workspaces/{wid}/resources` owner → `{resources:Resource[],products:Product[]}`.
 - `PATCH /workspaces/{wid}/resources/{resource_id}` owner body `{total:number}` → `Resource`. Cannot reduce below existing reservations; positive integers only.
 - `POST /workspaces/{wid}/resources` owner body `{kind,key,label,unit,total,metadata}` → `Resource` (201). Capacity key `capacity:YYYY-MM-DD`, metadata `{date:"YYYY-MM-DD"}`. Stock key `stock:{product_id}:{variant}:{size}`.
@@ -60,3 +60,7 @@ Operators cannot read `/orders`, `/orders/{oid}`, `/resources`, commercial job t
 - Operator `GET /orders/{oid}/ticket` and `POST /orders/{oid}/production/start` return the same operational shape. Missing financial fields are intentionally absent and must never be displayed as zero. Owner responses retain the full existing contract.
 
 Release gates are server enforced for both roles. Starting production commits held resources and invalidates pending customer links. Later requests require owner resolution; automatic changes cannot undo started work.
+
+## Reference interpreter limits
+
+`reference` is a deterministic development harness, not an AI model. It accepts simple quantity/variant/dated pickup changes and the documented synthetic examples. Negations, multiple totals or size deltas, conflicting variants or dates, unsupported relative date qualifiers, invalid times and changed recipe/artwork/dietary specifications are returned for owner clarification. It never converts ordinary message approval into customer acceptance. Unsupported fields must not silently disappear from a prepared option. The separately configured Bedrock/Strands path remains untested against a live model until AWS access and budget are available.
