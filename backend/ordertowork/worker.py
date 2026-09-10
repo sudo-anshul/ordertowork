@@ -10,10 +10,72 @@ from sqlalchemy import select
 from ordertowork.config import get_settings
 from ordertowork.db import session_factory, utcnow
 from ordertowork.models.jobs import Job
-from ordertowork.services.agent import interpret_with_strands, reference_interpretation
+from ordertowork.services.agent import (
+    AgentBudgetExceeded,
+    AgentContextTooLarge,
+    interpret_with_strands,
+    reference_interpretation,
+)
 from ordertowork.services.jobs import claim_next
 
 logger = logging.getLogger("ordertowork.worker")
+
+
+def analysis_failure_message(exc: Exception) -> str:
+    """Give actionable setup errors without persisting provider exception text."""
+    from botocore.exceptions import (
+        ClientError,
+        CredentialRetrievalError,
+        LoginRefreshRequired,
+        NoCredentialsError,
+        PartialCredentialsError,
+        TokenRetrievalError,
+    )
+    from strands.types.exceptions import MaxTokensReachedException, ModelThrottledException
+
+    if isinstance(exc, (AgentBudgetExceeded, MaxTokensReachedException)):
+        return (
+            "Analysis reached its token or turn limit. Shorten the request or review it manually."
+        )
+    if isinstance(exc, AgentContextTooLarge):
+        return "This order exceeds the analysis context limit. Review its request manually."
+    if isinstance(exc, TimeoutError):
+        return "Analysis timed out. Your accepted order is unchanged; retry when the service is available."
+    if isinstance(exc, ValueError) and "Bedrock model" in str(exc):
+        return "Bedrock is not configured. Select an accessible model after authenticating AWS."
+    cause = exc
+    seen: set[int] = set()
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        if isinstance(
+            cause,
+            (
+                NoCredentialsError,
+                PartialCredentialsError,
+                TokenRetrievalError,
+                CredentialRetrievalError,
+                LoginRefreshRequired,
+            ),
+        ):
+            return "AWS credentials are unavailable or expired. Reauthenticate the worker's AWS profile."
+        if isinstance(cause, ModelThrottledException):
+            return "Bedrock is temporarily rate limited. Wait before retrying the analysis."
+        if isinstance(cause, ClientError):
+            code = cause.response.get("Error", {}).get("Code")
+            if code in ("ExpiredToken", "ExpiredTokenException", "UnrecognizedClientException"):
+                return "AWS credentials are unavailable or expired. Reauthenticate the worker's AWS profile."
+            if code in ("AccessDenied", "AccessDeniedException", "UnauthorizedException"):
+                return "AWS denied model or session-storage access. Check the worker role and model availability."
+            if code in (
+                "ThrottlingException",
+                "TooManyRequestsException",
+                "ServiceQuotaExceededException",
+            ):
+                return "Bedrock is temporarily rate limited. Wait before retrying the analysis."
+            if code in ("ValidationException", "ResourceNotFoundException"):
+                return "Bedrock could not use the configured model. Check its model ID and region."
+        cause = cause.__cause__
+    return "Analysis did not complete. Review the request and configuration, then retry."
 
 
 def current_lease(job: Job, token: str) -> bool:
@@ -51,11 +113,12 @@ async def process_one() -> bool:
             )
             if not message:
                 raise RuntimeError("Source message unavailable")
-            workspace_id, order_id, body, mode = (
+            workspace_id, order_id, body, mode, received_at = (
                 job.workspace_id,
                 job.order_id,
                 message.body,
                 job.mode,
+                message.created_at,
             )
             order = db.get(Order, order_id)
             expected_revision = order.accepted_revision_id
@@ -84,7 +147,9 @@ async def process_one() -> bool:
                 )
         elif mode == "bedrock":
             review = await asyncio.wait_for(
-                interpret_with_strands(workspace_id, order_id, body, events),
+                interpret_with_strands(
+                    workspace_id, order_id, body, events, received_at=received_at
+                ),
                 timeout=get_settings().agent_timeout_seconds,
             )
         else:
@@ -121,11 +186,7 @@ async def process_one() -> bool:
         logger.info("Analysis completed job=%s mode=%s", job_id, mode)
     except Exception as exc:
         # Do not persist SDK error text: it can include credentials, request content or tokens.
-        error = (
-            "Bedrock is not configured. Select an accessible model after authenticating AWS."
-            if isinstance(exc, ValueError) and "Bedrock model" in str(exc)
-            else "Analysis did not complete. Review the request and configuration, then retry."
-        )
+        error = analysis_failure_message(exc)
         with session_factory()() as db:
             job = db.scalar(select(Job).where(Job.id == job_id).with_for_update())
             if job and current_lease(job, token):

@@ -5,8 +5,30 @@ import re
 from pathlib import Path
 
 import boto3
+from botocore.config import Config
 from fastapi import HTTPException
 from ordertowork.config import get_settings
+
+
+def s3_client():
+    settings = get_settings()
+    if not settings.s3_bucket:
+        raise HTTPException(
+            503,
+            detail={"code": "storage_unavailable", "message": "File storage is not configured."},
+        )
+    # Explicit SigV4 is needed for consistent presigning across S3 regions and
+    # temporary runtime-role credentials. Credentials come from the SDK chain.
+    return boto3.client(
+        "s3",
+        region_name=settings.aws_region,
+        config=Config(
+            signature_version="s3v4",
+            connect_timeout=5,
+            read_timeout=30,
+            retries={"mode": "standard", "total_max_attempts": 3},
+        ),
+    )
 
 
 def validate_upload(filename: str, content_type: str, content: bytes) -> str:
@@ -43,7 +65,7 @@ def local_path(key: str) -> Path:
 def put_file(key: str, content: bytes, content_type: str) -> str:
     settings = get_settings()
     if settings.storage_mode == "s3":
-        boto3.client("s3", region_name=settings.aws_region).put_object(
+        s3_client().put_object(
             Bucket=settings.s3_bucket,
             Key=key,
             Body=content,
@@ -63,16 +85,14 @@ def put_file(key: str, content: bytes, content_type: str) -> str:
 def remove_file(key: str):
     settings = get_settings()
     if settings.storage_mode == "s3":
-        boto3.client("s3", region_name=settings.aws_region).delete_object(
-            Bucket=settings.s3_bucket, Key=key
-        )
+        s3_client().delete_object(Bucket=settings.s3_bucket, Key=key)
     else:
         local_path(key).unlink(missing_ok=True)
 
 
 def download_url(key: str) -> str:
     settings = get_settings()
-    return boto3.client("s3", region_name=settings.aws_region).generate_presigned_url(
+    return s3_client().generate_presigned_url(
         "get_object",
         Params={
             "Bucket": settings.s3_bucket,

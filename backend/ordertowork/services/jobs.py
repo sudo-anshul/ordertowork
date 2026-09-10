@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from ordertowork.config import get_settings
 from ordertowork.db import new_id, utcnow
 from ordertowork.models.core import Workspace
-from ordertowork.models.jobs import Job
+from ordertowork.models.jobs import AgentDailyUsage, Job
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, aliased
 
@@ -65,6 +65,30 @@ def enqueue_analysis(db: Session, workspace_id: str, order_id: str, message_id: 
     db.add(job)
     db.flush()
     return job
+
+
+def reserve_bedrock_attempt(db: Session) -> bool:
+    """Atomically reserve one paid run before invoking a provider, across all tenants.
+
+    Retried/expired jobs reserve again. Failed runs are not refunded because the
+    provider may already have processed tokens. A zero limit is the kill switch.
+    The reservation commits in the same transaction as the worker lease.
+    """
+    limit = get_settings().max_daily_bedrock_attempts
+    if limit == 0:
+        return False
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+
+    statement = insert(AgentDailyUsage).values(day=utcnow().date(), attempts=1)
+    statement = statement.on_conflict_do_update(
+        index_elements=[AgentDailyUsage.day],
+        set_={"attempts": AgentDailyUsage.attempts + 1},
+        where=AgentDailyUsage.attempts < limit,
+    ).returning(AgentDailyUsage.attempts)
+    return db.scalar(statement) is not None
 
 
 def claim_next(db: Session) -> tuple[str, str] | None:
@@ -132,6 +156,14 @@ def claim_next(db: Session) -> tuple[str, str] | None:
             .limit(1)
         )
         if busy:
+            continue
+        if job.mode == "bedrock" and not reserve_bedrock_attempt(db):
+            job.status, job.error, job.updated_at = (
+                "failed",
+                "Daily live-AI budget reached. Retry after 00:00 UTC or contact the owner.",
+                now,
+            )
+            job.lease_token, job.leased_until = None, None
             continue
         token = new_id()
         job.status, job.lease_token = "running", token

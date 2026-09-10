@@ -148,3 +148,27 @@ def test_parallel_claimers_never_run_two_jobs_for_one_order(scheduler_pg_engine)
     with Session(engine) as db:
         jobs = list(db.scalars(select(Job).where(Job.order_id == order_id)))
         assert sorted(job.status for job in jobs) == ["queued", "running"]
+
+
+@pytest.mark.postgres
+def test_paid_run_budget_is_atomic_across_workers(scheduler_pg_engine, monkeypatch):
+    from ordertowork.config import get_settings
+    from ordertowork.models.jobs import AgentDailyUsage
+    from ordertowork.services.jobs import reserve_bedrock_attempt
+
+    monkeypatch.setattr(get_settings(), "max_daily_bedrock_attempts", 3)
+    barrier = Barrier(8)
+
+    def reserve(_):
+        with Session(scheduler_pg_engine) as db:
+            db.execute(text("SET LOCAL lock_timeout = '3s'"))
+            barrier.wait(timeout=5)
+            accepted = reserve_bedrock_attempt(db)
+            db.commit()
+            return accepted
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(reserve, range(8)))
+    assert sum(results) == 3
+    with Session(scheduler_pg_engine) as db:
+        assert db.get(AgentDailyUsage, utcnow().date()).attempts == 3

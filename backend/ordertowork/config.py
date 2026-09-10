@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     agent_mode: str = "bedrock"
     aws_region: str = "us-east-1"
     bedrock_model_id: str = ""
+    bedrock_max_output_tokens: int = Field(default=1024, ge=256, le=4096)
+    agent_max_turns: int = Field(default=5, ge=2, le=10)
+    agent_max_total_tokens: int = Field(default=18000, ge=2000, le=50000)
+    max_daily_bedrock_attempts: int = Field(default=100, ge=0, le=1000)
     storage_mode: str = "local"
     s3_bucket: str = ""
     data_dir: Path = Path(".data")

@@ -1,7 +1,10 @@
+import asyncio
+import base64
 from datetime import timedelta
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -411,3 +414,78 @@ def test_cognito_callback_verifies_jwt_and_consumes_state_once(identity_app, mon
     )
     assert replay.status_code == 400
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("client_secret", ["", "offline-client-secret"])
+def test_cognito_token_exchange_supports_public_and_confidential_clients(
+    identity_app, monkeypatch, client_secret
+):
+    context = identity_app
+    use_cognito(context)
+    context.settings.cognito_client_secret = client_secret
+    requests = []
+
+    def provider(request):
+        requests.append(request)
+        return httpx.Response(200, json={"id_token": "provider-id-token"})
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(provider)
+    monkeypatch.setattr(
+        auth_service.httpx,
+        "AsyncClient",
+        lambda **kwargs: original_client(transport=transport, **kwargs),
+    )
+    payload = asyncio.run(
+        auth_service.exchange_code("single-use-code", "pkce-verifier", context.settings)
+    )
+    assert payload["id_token"] == "provider-id-token"
+    assert len(requests) == 1
+    request = requests[0]
+    assert str(request.url) == context.settings.cognito_domain + "/oauth2/token"
+    assert request.method == "POST"
+    assert parse_qs(request.content.decode()) == {
+        "grant_type": ["authorization_code"],
+        "client_id": [context.settings.cognito_client_id],
+        "code": ["single-use-code"],
+        "redirect_uri": ["https://orders.example/api/auth/callback"],
+        "code_verifier": ["pkce-verifier"],
+    }
+    if client_secret:
+        encoded = base64.b64encode(
+            f"{context.settings.cognito_client_id}:{client_secret}".encode()
+        ).decode()
+        assert request.headers["authorization"] == "Basic " + encoded
+    else:
+        assert "authorization" not in request.headers
+    assert request.extensions["timeout"]["connect"] == 15
+
+
+@pytest.mark.parametrize("failure", ["rejected", "malformed", "missing_id_token", "timeout"])
+def test_cognito_provider_failure_has_retryable_login_message(identity_app, monkeypatch, failure):
+    context = identity_app
+    use_cognito(context)
+
+    def provider(request):
+        if failure == "timeout":
+            raise httpx.ReadTimeout("provider unavailable", request=request)
+        if failure == "rejected":
+            return httpx.Response(400, json={"error": "invalid_grant"})
+        if failure == "malformed":
+            return httpx.Response(200, content=b"invalid JSON")
+        return httpx.Response(200, json={"access_token": "access-token-without-id-token"})
+
+    original_client = httpx.AsyncClient
+    transport = httpx.MockTransport(provider)
+    monkeypatch.setattr(
+        auth_service.httpx,
+        "AsyncClient",
+        lambda **kwargs: original_client(transport=transport, **kwargs),
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(auth_service.exchange_code("provider-code", "verifier", context.settings))
+    assert error.value.status_code == 401
+    assert error.value.detail == {
+        "code": "login_failed",
+        "message": "Login could not be completed. Please try again",
+    }

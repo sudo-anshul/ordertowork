@@ -1,9 +1,28 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ordertowork.db import Base, new_id, utcnow
+
+
+class AgentDailyUsage(Base):
+    """Global paid-run reservations, independent of workspace creation and retries."""
+
+    __tablename__ = "agent_daily_usage"
+    __table_args__ = (CheckConstraint("attempts >= 0", name="nonnegative_agent_attempts"),)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Job(Base):
