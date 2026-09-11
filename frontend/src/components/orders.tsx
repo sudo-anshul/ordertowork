@@ -10,17 +10,29 @@ export const statusLabels: Record<string, string> = {
   deposit_due: 'Deposit needed',
   on_hold: 'On hold',
   in_production: 'In production',
+  ready_for_handover: 'Ready for handover',
+  awaiting_collection: 'Awaiting collection',
+  awaiting_dispatch: 'Awaiting dispatch',
+  out_for_delivery: 'Out for delivery',
+  completed: 'Completed',
   new: 'New request',
 };
 export function OrderBadge({ status }: { status: string }) {
   return (
     <Badge
       tone={
-        status === 'ready' || status === 'in_production'
+        ['ready', 'in_production', 'completed'].includes(status)
           ? 'green'
-          : ['needs_review', 'on_hold', 'deposit_due', 'new'].includes(status)
-            ? 'amber'
-            : 'neutral'
+          : [
+                'ready_for_handover',
+                'awaiting_collection',
+                'awaiting_dispatch',
+                'out_for_delivery',
+              ].includes(status)
+            ? 'blue'
+            : ['needs_review', 'on_hold', 'deposit_due', 'new'].includes(status)
+              ? 'amber'
+              : 'neutral'
       }
     >
       {statusLabels[status] ?? titleCase(status)}
@@ -172,9 +184,14 @@ export function Readiness({
       text: accepted ? `Revision ${accepted.number} confirmed` : 'Awaiting exact revision approval',
     },
     {
-      done: Boolean(order.reservations?.length),
+      done: Boolean(order.reservations?.length) || order.production_status !== 'not_started',
       label: 'Resources',
-      text: order.reservations?.length ? 'Reserved for the accepted revision' : 'Not yet reserved',
+      text:
+        order.production_status !== 'not_started'
+          ? 'Committed to the accepted work'
+          : order.reservations?.length
+            ? 'Reserved for the accepted revision'
+            : 'Not yet reserved',
     },
     {
       done: Boolean(accepted && order.deposit_paid_cents >= required),

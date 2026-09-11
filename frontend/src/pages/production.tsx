@@ -29,7 +29,8 @@ export function ProductionQueuePage() {
     <>
       <PageIntro eyebrow="Production handoff" title="Agreed. Checked. Ready for the team.">
         <p>
-          Released work and orders already in production. Open the current ticket before starting.
+          Released work, production in progress, and finished items awaiting handover. Open the
+          current ticket before starting.
         </p>
       </PageIntro>
       <ErrorNotice message={error} retry={() => void refresh()} />
@@ -60,7 +61,11 @@ export function ProductionQueuePage() {
                 <span>{dateTime(order.pickup_at, workspace.timezone)}</span>
               </div>
               <Badge tone="green">
-                {order.production_status === 'started' ? 'In production' : 'Ready for work'}
+                {order.production_status === 'finished'
+                  ? 'Production finished'
+                  : order.production_status === 'started'
+                    ? 'In production'
+                    : 'Ready for work'}
               </Badge>
               <ArrowRight size={17} className="row-arrow" />
             </Link>
@@ -97,6 +102,7 @@ export function ProductionTicketPage() {
     refresh,
   } = useApi<OperationalTicket>(`${path}/ticket`, { pollMs: 10000 });
   const [confirm, setConfirm] = useState<number | null>(null);
+  const [finishConfirm, setFinishConfirm] = useState<number | null>(null);
   const action = useAction();
   const revision = ticket
     ? typeof ticket.revision === 'number'
@@ -167,9 +173,11 @@ export function ProductionTicketPage() {
               </div>
               <div>
                 <Badge tone="green">
-                  {ticket.production_status === 'started'
-                    ? 'In production'
-                    : 'Ready for production'}
+                  {ticket.production_status === 'finished'
+                    ? 'Production finished'
+                    : ticket.production_status === 'started'
+                      ? 'In production'
+                      : 'Ready for production'}
                 </Badge>
                 {ticket.is_demo && <Badge tone="amber">Sample order</Badge>}
               </div>
@@ -222,15 +230,68 @@ export function ProductionTicketPage() {
                 <Button onClick={download}>
                   <Download size={16} /> Download ticket
                 </Button>
-                {ticket.production_status !== 'started' && (
+                {ticket.production_status === 'not_started' && (
                   <Button variant="primary" onClick={() => setConfirm(revision)}>
                     Start work <ArrowRight size={16} />
                   </Button>
+                )}
+                {ticket.production_status === 'started' && workspace.role === 'operator' && (
+                  <Button variant="primary" onClick={() => setFinishConfirm(revision)}>
+                    <PackageCheck size={16} /> Finish production
+                  </Button>
+                )}
+                {ticket.production_status !== 'not_started' && workspace.role === 'owner' && (
+                  <Link
+                    className="button button-primary"
+                    to={`/w/${workspace.id}/orders/${orderId}?tab=handover`}
+                  >
+                    <PackageCheck size={16} /> Manage handover
+                  </Link>
                 )}
               </div>
             </footer>
           </article>
         )
+      )}
+      {ticket?.production_status === 'finished' && workspace.role === 'operator' && (
+        <Notice tone="success" title="Production is finished.">
+          The workspace owner manages collection, delivery and the final payment record. This ticket
+          preserves the agreed production specification.
+        </Notice>
+      )}
+      {finishConfirm && (
+        <Modal
+          title="Is production finished for this order?"
+          onClose={() => setFinishConfirm(null)}
+        >
+          <div className="modal-body form-stack">
+            <Notice title={`Confirm the items for revision ${finishConfirm} are complete.`}>
+              This finishes production. The owner can then prepare the customer’s collection and
+              delivery options. It does not record a customer handover.
+            </Notice>
+            <ErrorNotice message={action.error} />
+            <div className="form-actions">
+              <Button onClick={() => setFinishConfirm(null)} disabled={action.pending}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                busy={action.pending}
+                onClick={() =>
+                  void action.run(
+                    () => post(`${path}/production/finish`, { expected_revision: finishConfirm }),
+                    async () => {
+                      await refresh();
+                      setFinishConfirm(null);
+                    },
+                  )
+                }
+              >
+                <PackageCheck size={16} /> Confirm production finished
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
       {confirm && (
         <Modal title="Start this work order?" onClose={() => setConfirm(null)}>

@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from ordertowork.config import get_settings
 from ordertowork.db import Base
-from ordertowork.models import auth, core, domain, jobs  # noqa: F401
+from ordertowork.models import auth, core, domain, handover, jobs  # noqa: F401
 from sqlalchemy import engine_from_config, pool
 
 # this is the Alembic Config object, which provides

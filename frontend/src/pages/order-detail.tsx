@@ -11,6 +11,7 @@ import {
   Link2,
   LoaderCircle,
   MessageSquareText,
+  PackageCheck,
   Plus,
   RefreshCw,
   Send,
@@ -23,6 +24,8 @@ import { useWorkspace } from '../lib/workspace';
 import { useAuth } from '../lib/auth';
 import { Attachments } from '../components/attachments';
 import { AnalysisEvidence } from '../components/analysis-evidence';
+import { HandoverPanel } from '../components/handover-panel';
+import { HandoverPrice } from '../components/handover-summary';
 import { OrderForm } from '../components/order-form';
 import { OrderBadge, Readiness, Specification, TermsDiff, sizesText } from '../components/orders';
 import {
@@ -75,9 +78,10 @@ export function OrderDetailPage() {
   const [latestJob, setLatestJob] = useState<AnalysisJob | null>(null);
   const action = useAction();
   const owner = workspace.role === 'owner';
-  const candidates = (order?.revisions ?? []).filter((revision) =>
-    ['proposed', 'shared'].includes(revision.status),
-  );
+  const candidates =
+    order?.production_status === 'not_started'
+      ? order.revisions.filter((revision) => ['proposed', 'shared'].includes(revision.status))
+      : [];
   const selected =
     candidates.find((revision) => revision.id === selectedId) ??
     candidates.find((revision) => revision.id === order?.shared_revision_id) ??
@@ -104,6 +108,7 @@ export function OrderDetailPage() {
     setData(next);
     await refresh(true);
   };
+  const productionClosed = order.production_status !== 'not_started';
   const needsDecision =
     candidates.length > 0 ||
     ['needs_review', 'needs_decision', 'needs_clarification', 'new'].includes(order.status);
@@ -111,19 +116,23 @@ export function OrderDetailPage() {
     ? 'A decision before work moves forward.'
     : order.status === 'awaiting_approval'
       ? 'The customer has the next decision.'
-      : needsDecision
-        ? order.accepted_revision
-          ? 'Find a workable way forward.'
-          : 'Make the first agreement clear.'
-        : order.production_status === 'started'
-          ? 'The team is working from the agreement.'
-          : order.status === 'deposit_due'
-            ? 'Agreed. One step before production.'
-            : order.production_ready
-              ? 'Ready to hand off.'
-              : order.accepted_revision
-                ? 'Review the current agreement.'
-                : 'Make the first agreement clear.';
+      : order.status === 'completed'
+        ? 'An agreement, followed all the way through.'
+        : order.production_status === 'finished'
+          ? 'The work is finished. Make the handover clear.'
+          : needsDecision
+            ? order.accepted_revision
+              ? 'Find a workable way forward.'
+              : 'Make the first agreement clear.'
+            : order.production_status === 'started'
+              ? 'The team is working from the agreement.'
+              : order.status === 'deposit_due'
+                ? 'Agreed. One step before production.'
+                : order.production_ready
+                  ? 'Ready for production.'
+                  : order.accepted_revision
+                    ? 'Review the current agreement.'
+                    : 'Make the first agreement clear.';
 
   return (
     <>
@@ -155,6 +164,7 @@ export function OrderDetailPage() {
           { id: 'review', label: 'Order & proposals' },
           { id: 'messages', label: `Messages (${order.messages.length})` },
           { id: 'production', label: 'Production' },
+          { id: 'handover', label: 'Handover' },
           { id: 'history', label: 'History' },
         ].map((item) => (
           <button
@@ -167,17 +177,42 @@ export function OrderDetailPage() {
           </button>
         ))}
         {owner && (
-          <Button variant="ghost" onClick={() => setComposer(true)}>
+          <Button variant="ghost" disabled={productionClosed} onClick={() => setComposer(true)}>
             <Plus size={15} /> Add customer message
           </Button>
         )}
       </div>
+      {productionClosed && tab !== 'handover' && (
+        <div className="handover-entry">
+          <span className="handover-next-icon">
+            <PackageCheck size={23} />
+          </span>
+          <div>
+            <strong>
+              {order.status === 'completed'
+                ? 'The order has reached its customer.'
+                : order.handover
+                  ? 'Keep the final handover moving.'
+                  : 'When the items are finished, close the loop.'}
+            </strong>
+            <p>
+              {order.status === 'completed'
+                ? 'View the recorded choice, payments and completed handover.'
+                : 'Prepare collection or delivery, share the customer link, and record the final handover.'}
+            </p>
+          </div>
+          <Button variant="primary" onClick={() => setParams({ tab: 'handover' })}>
+            {order.handover ? 'View handover' : 'Prepare handover'} <ArrowRight size={16} />
+          </Button>
+        </div>
+      )}
       {activeJob && (
         <AnalysisStatus
           job={activeJob}
           analysis={order.latest_analysis}
           workspaceId={workspace.id}
           owner={owner}
+          canRetry={!productionClosed}
           onComplete={() => void refresh(true)}
         />
       )}
@@ -194,7 +229,7 @@ export function OrderDetailPage() {
                 )}
               </Notice>
             )}
-            {Boolean(order.latest_analysis?.missing_fields?.length) && (
+            {!productionClosed && Boolean(order.latest_analysis?.missing_fields?.length) && (
               <Notice tone="warning" title="A few details still need clarification.">
                 <ul>
                   {order.latest_analysis?.missing_fields.map((field) => (
@@ -328,7 +363,7 @@ export function OrderDetailPage() {
                   </div>
                 )}
               </div>
-              {owner && (
+              {owner && !productionClosed && (
                 <div className="panel-action-footer">
                   <p>
                     {selected?.status === 'shared'
@@ -336,16 +371,13 @@ export function OrderDetailPage() {
                       : 'Sharing creates a customer review link. It does not reserve new resources or take payment.'}
                   </p>
                   <div className="action-cluster">
-                    <Button
-                      onClick={() => setProposal(true)}
-                      disabled={order.production_status === 'started'}
-                    >
+                    <Button onClick={() => setProposal(true)} disabled={productionClosed}>
                       <Plus size={16} /> Another option
                     </Button>
                     {selected && (
                       <Button
                         variant="primary"
-                        disabled={!selected.feasible || order.production_status === 'started'}
+                        disabled={!selected.feasible || productionClosed}
                         busy={action.pending}
                         onClick={() =>
                           void action.run(
@@ -367,7 +399,7 @@ export function OrderDetailPage() {
                 </div>
               )}
             </Panel>
-            {order.shared_revision_id && !shareResult && (
+            {order.shared_revision_id && !shareResult && !productionClosed && (
               <Notice title="A customer review link is active.">
                 The proposal is waiting for a customer response. For privacy, an existing link
                 cannot be retrieved; creating a replacement link revokes the old one.
@@ -407,7 +439,7 @@ export function OrderDetailPage() {
               <p className="eyebrow">Before production</p>
               <Readiness order={order} />
               <div className="aside-actions">
-                {owner && order.accepted_revision && (
+                {owner && order.accepted_revision && !order.handover && (
                   <Button onClick={() => setDeposit(true)} className="full-width">
                     Record received deposit
                   </Button>
@@ -417,37 +449,45 @@ export function OrderDetailPage() {
                   onClick={() => setParams({ tab: 'production' })}
                   className="full-width"
                 >
-                  {order.production_ready
+                  {order.production_ready || productionClosed
                     ? 'View accepted work order'
                     : 'View production conditions'}{' '}
                   <ArrowRight size={16} />
                 </Button>
               </div>
             </Panel>
-            <Panel className="panel-padded">
-              <p className="eyebrow">Financial record</p>
-              <dl>
-                <KeyValue label="Deposit received">
-                  {money(order.deposit_paid_cents, workspace.currency)}
-                </KeyValue>
-                {order.accepted_revision && (
-                  <>
-                    <KeyValue label="Accepted total">
-                      {money(order.accepted_revision.terms.total_cents, workspace.currency)}
-                    </KeyValue>
-                    <KeyValue label="Balance remaining">
-                      {money(
-                        Math.max(
-                          0,
-                          order.accepted_revision.terms.total_cents - order.deposit_paid_cents,
-                        ),
-                        workspace.currency,
-                      )}
-                    </KeyValue>
-                  </>
-                )}
-              </dl>
-            </Panel>
+            {order.handover ? (
+              <HandoverPrice
+                pricing={order.handover.pricing}
+                method={order.handover.method}
+                quote={order.handover.status === 'quote_ready'}
+              />
+            ) : (
+              <Panel className="panel-padded">
+                <p className="eyebrow">Financial record</p>
+                <dl>
+                  <KeyValue label="Deposit received">
+                    {money(order.deposit_paid_cents, workspace.currency)}
+                  </KeyValue>
+                  {order.accepted_revision && (
+                    <>
+                      <KeyValue label="Accepted total">
+                        {money(order.accepted_revision.terms.total_cents, workspace.currency)}
+                      </KeyValue>
+                      <KeyValue label="Balance remaining">
+                        {money(
+                          Math.max(
+                            0,
+                            order.accepted_revision.terms.total_cents - order.deposit_paid_cents,
+                          ),
+                          workspace.currency,
+                        )}
+                      </KeyValue>
+                    </>
+                  )}
+                </dl>
+              </Panel>
+            )}
             <p className="aside-note">
               <ShieldCheck size={15} /> Availability is checked again when the customer approves. A
               failed change preserves the original commitment.
@@ -459,7 +499,7 @@ export function OrderDetailPage() {
         <Panel className="panel-padded">
           <PanelHeading title="Customer source messages">
             {owner && (
-              <Button onClick={() => setComposer(true)}>
+              <Button disabled={productionClosed} onClick={() => setComposer(true)}>
                 <Plus size={16} /> Add message
               </Button>
             )}
@@ -532,6 +572,16 @@ export function OrderDetailPage() {
           path={path}
           onUpdate={acceptUpdate}
           onDeposit={() => setDeposit(true)}
+          onHold={() => setHold(true)}
+          onHandover={() => setParams({ tab: 'handover' })}
+        />
+      )}
+      {tab === 'handover' && (
+        <HandoverPanel
+          key={order.id}
+          order={order}
+          path={path}
+          onUpdated={() => refresh(true)}
           onHold={() => setHold(true)}
         />
       )}
@@ -650,12 +700,14 @@ function AnalysisStatus({
   analysis,
   workspaceId,
   owner,
+  canRetry,
   onComplete,
 }: {
   job: AnalysisJob;
   analysis?: Analysis | null;
   workspaceId: string;
   owner: boolean;
+  canRetry: boolean;
   onComplete: () => void;
 }) {
   const { session } = useAuth();
@@ -696,7 +748,7 @@ function AnalysisStatus({
               from this business’s demo allowance.
             </p>
           )}
-          {owner && (
+          {owner && canRetry && (
             <Button
               busy={action.pending}
               onClick={() =>
@@ -1065,16 +1117,18 @@ function ProductionView({
   onUpdate,
   onDeposit,
   onHold,
+  onHandover,
 }: {
   order: OrderDetail;
   path: string;
   onUpdate: (order: OrderDetail) => Promise<void>;
   onDeposit: () => void;
   onHold: () => void;
+  onHandover: () => void;
 }) {
   const workspace = useWorkspace();
   const ticket = useApi<Ticket>(
-    order.production_ready || order.production_status === 'started' ? `${path}/ticket` : null,
+    order.production_ready || order.production_status !== 'not_started' ? `${path}/ticket` : null,
   );
   const action = useAction();
   const [startConfirm, setStartConfirm] = useState<number | null>(null);
@@ -1121,7 +1175,7 @@ function ProductionView({
       setDownloadError(errorMessage(e));
     }
   };
-  if (!order.production_ready && order.production_status !== 'started')
+  if (!order.production_ready && order.production_status === 'not_started')
     return (
       <div className="readiness-layout">
         <Panel className="panel-padded">
@@ -1177,7 +1231,11 @@ function ProductionView({
               </div>
               <div>
                 <Badge tone="green">
-                  {value.production_status === 'started' ? 'In production' : 'Ready for production'}
+                  {order.production_status === 'finished'
+                    ? 'Production finished'
+                    : order.production_status === 'started'
+                      ? 'In production'
+                      : 'Ready for production'}
                 </Badge>
                 {value.is_demo && <Badge tone="amber">Sample order</Badge>}
               </div>
@@ -1239,7 +1297,7 @@ function ProductionView({
                 <Button onClick={download}>
                   <Download size={16} /> Download ticket
                 </Button>
-                {value.production_status !== 'started' && (
+                {order.production_status === 'not_started' && (
                   <Button
                     variant="primary"
                     onClick={() =>
@@ -1249,6 +1307,12 @@ function ProductionView({
                     }
                   >
                     Start work <ArrowRight size={16} />
+                  </Button>
+                )}
+                {order.production_status !== 'not_started' && (
+                  <Button variant="primary" onClick={onHandover}>
+                    <PackageCheck size={16} />{' '}
+                    {order.handover ? 'View handover' : 'Prepare handover'}
                   </Button>
                 )}
               </div>

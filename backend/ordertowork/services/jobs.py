@@ -211,6 +211,14 @@ def claim_next(db: Session) -> tuple[str, str] | None:
         )
         if locked_order is None:
             continue
+        if locked_order.production_status != "not_started":
+            job.status, job.error, job.updated_at = (
+                "failed",
+                "Production has begun. Further order changes require the owner's review.",
+                now,
+            )
+            job.lease_token, job.leased_until = None, None
+            continue
         workspace = db.get(Workspace, job.workspace_id)
         if not workspace or workspace.status != "active":
             job.status, job.error, job.updated_at = "failed", "Workspace is not active.", now

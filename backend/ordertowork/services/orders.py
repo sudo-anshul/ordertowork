@@ -26,6 +26,7 @@ from ordertowork.models.domain import (
     Resource,
     SourceMessage,
 )
+from ordertowork.models.handover import Handover
 from ordertowork.services.demo import demo_workspace_active, public_demo_workspace
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -350,7 +351,7 @@ def revision_hash(
 
 def create_proposal(db: Session, workspace_id: str, order_id: str, values: dict) -> OrderRevision:
     order = get_order(db, workspace_id, order_id, lock=True)
-    if order.production_status == "started":
+    if order.production_status != "not_started":
         fail(
             "production_started",
             "Production has started. The owner must resolve committed work before a change can be accepted.",
@@ -481,10 +482,19 @@ def order_summary(db: Session, order: Order) -> dict:
         db.get(OrderRevision, order.accepted_revision_id) if order.accepted_revision_id else None
     )
     paid = paid_cents(db, order)
-    if order.production_status == "started":
-        status = "in_production"
+    handover = db.scalar(select(Handover).where(Handover.order_id == order.id))
+    if handover and handover.status in {"collected", "delivered"}:
+        status = "completed"
     elif order.hold_reason:
         status = "on_hold"
+    elif handover and handover.status == "out_for_delivery":
+        status = "out_for_delivery"
+    elif handover and handover.status == "confirmed":
+        status = "awaiting_collection" if handover.method == "collection" else "awaiting_dispatch"
+    elif order.production_status == "finished":
+        status = "ready_for_handover"
+    elif order.production_status == "started":
+        status = "in_production"
     elif order.shared_revision_id:
         status = "awaiting_approval"
     elif order.needs_attention or db.scalar(
@@ -507,6 +517,7 @@ def order_summary(db: Session, order: Order) -> dict:
         "is_demo": order.is_demo,
         "status": status,
         "production_status": order.production_status,
+        "handover_status": handover.status if handover else None,
         "hold_reason": order.hold_reason,
         "accepted_revision": revision_dict(revision) if revision else None,
         "deposit_paid_cents": paid,
@@ -528,6 +539,10 @@ def order_detail(db: Session, workspace_id: str, order_id: str) -> dict:
     db.flush()
     blockers = production_blockers(db, order)
     from ordertowork.models.jobs import Job
+    from ordertowork.services.handover import for_order
+    from ordertowork.services.handover import payload as handover_payload
+
+    handover = for_order(db, order)
 
     job = db.scalar(
         select(Job)
@@ -559,10 +574,11 @@ def order_detail(db: Session, workspace_id: str, order_id: str) -> dict:
             )
         ],
         "reservations": reservation_dicts(db, order),
-        "production_ready": not blockers,
+        "production_ready": not blockers and order.production_status == "not_started",
         "production_blockers": blockers,
         "shared_revision_id": order.shared_revision_id,
         "latest_analysis": order.latest_analysis,
+        "handover": handover_payload(db, order, handover) if handover else None,
     }
 
 
@@ -595,6 +611,11 @@ def record_message(
     db: Session, workspace_id: str, order_id: str, body: str, source="manual"
 ) -> SourceMessage:
     order = get_order(db, workspace_id, order_id, lock=True)
+    if order.production_status != "not_started":
+        fail(
+            "production_started",
+            "Production has already begun. Use the handover section for collection or delivery arrangements.",
+        )
     workspace = get_workspace(db, workspace_id)
     if public_demo_workspace(workspace):
         count = (
@@ -633,7 +654,7 @@ def analyze_change(db: Session, workspace_id: str, order_id: str, request: dict)
         "missing_fields": missing,
         "requested_issues": [],
     }
-    if order.production_status == "started":
+    if order.production_status != "not_started":
         event(
             db,
             order,
@@ -724,7 +745,7 @@ def analyze_change(db: Session, workspace_id: str, order_id: str, request: dict)
 
 def share_proposal(db: Session, workspace_id: str, order_id: str, revision_id: str) -> dict:
     order = get_order(db, workspace_id, order_id, lock=True)
-    if order.production_status == "started":
+    if order.production_status != "not_started":
         fail(
             "production_started", "Production has started; an owner must resolve the existing work."
         )
@@ -920,7 +941,7 @@ def approve_customer(db: Session, token: str, terms_hash: str, consent: bool) ->
     }
     if link.status == "approved":
         return {"status": "already_approved", **result}
-    if order.production_status == "started":
+    if order.production_status != "not_started":
         fail(
             "production_started",
             "The business has started production. Please contact them about this change.",
@@ -1027,6 +1048,8 @@ def record_deposit(
     reference: str,
     idempotency_key: str,
     user_id: str | None,
+    *,
+    payment_kind: str = "deposit",
 ) -> dict:
     order = get_order(db, workspace_id, order_id, lock=True)
     if (
@@ -1049,6 +1072,11 @@ def record_deposit(
                 "This request key was already used for a different payment record.",
             )
         return order_detail(db, workspace_id, order_id)
+    if order.production_status == "finished" and payment_kind != "payment":
+        fail(
+            "use_handover_payment",
+            "Production is finished. Record the remaining payment from the handover section.",
+        )
     db.add(
         Deposit(
             workspace_id=workspace_id,
@@ -1062,8 +1090,8 @@ def record_deposit(
     event(
         db,
         order,
-        "deposit_recorded",
-        f"Recorded a received deposit of {get_workspace(db, workspace_id).currency} "
+        "payment_recorded" if payment_kind == "payment" else "deposit_recorded",
+        f"Recorded a received {payment_kind} of {get_workspace(db, workspace_id).currency} "
         f"{amount_cents // 100:,}.{amount_cents % 100:02d}.",
         {"recorded_by": user_id, "reference": reference.strip()},
     )
@@ -1111,8 +1139,13 @@ def start_production(db: Session, workspace_id: str, order_id: str, expected_rev
             "stale_revision",
             "The accepted revision changed. Reload and review the current production ticket before starting work.",
         )
+    if order.production_status == "finished":
+        fail(
+            "production_finished",
+            "This work is finished. Continue with its handover instead of restarting production.",
+        )
     production_ticket(db, workspace_id, order_id)
-    if order.production_status != "started":
+    if order.production_status == "not_started":
         order.production_status = "started"
         for reservation in db.scalars(
             select(Reservation).where(
@@ -1136,8 +1169,38 @@ def start_production(db: Session, workspace_id: str, order_id: str, expected_rev
     return order_detail(db, workspace_id, order_id)
 
 
+def finish_production(
+    db: Session, workspace_id: str, order_id: str, expected_revision: int
+) -> dict:
+    order = get_order(db, workspace_id, order_id, lock=True)
+    accepted = (
+        db.get(OrderRevision, order.accepted_revision_id) if order.accepted_revision_id else None
+    )
+    if isinstance(expected_revision, bool) or not accepted or accepted.number != expected_revision:
+        fail("stale_revision", "Reload and review the current accepted production revision.")
+    if order.production_status not in {"started", "finished"}:
+        fail("production_not_started", "Start the production work before marking it finished.")
+    production_ticket(db, workspace_id, order_id)
+    if order.production_status == "started":
+        order.production_status = "finished"
+        order.needs_attention = False
+        event(
+            db,
+            order,
+            "production_finished",
+            "Production finished for the accepted revision. The owner can prepare customer handover.",
+        )
+        db.flush()
+    return production_ticket(db, workspace_id, order_id)
+
+
 def set_hold(db: Session, workspace_id: str, order_id: str, reason: str | None) -> dict:
     order = get_order(db, workspace_id, order_id, lock=True)
+    handover = db.scalar(select(Handover).where(Handover.order_id == order.id))
+    if reason and reason.strip() and handover and handover.status in {"collected", "delivered"}:
+        fail(
+            "handover_completed", "This order is already completed. Its handover cannot be paused."
+        )
     order.hold_reason = reason.strip() if reason and reason.strip() else None
     event(
         db,
@@ -1198,6 +1261,9 @@ def production_queue(db: Session, workspace_id: str) -> dict:
         .where(Order.workspace_id == workspace_id, Order.accepted_revision_id.is_not(None))
         .order_by(Order.created_at)
     ):
+        handover = db.scalar(select(Handover).where(Handover.order_id == order.id))
+        if handover and handover.status in {"collected", "delivered"}:
+            continue
         if production_blockers(db, order):
             continue
         revision = db.get(OrderRevision, order.accepted_revision_id)

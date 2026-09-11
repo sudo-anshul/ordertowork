@@ -16,6 +16,7 @@ The deployed merchandise and bakery workflows have been verified through live mo
 - Immutable proposals, price and resource checks, and private expiring customer review links.
 - Explicit customer consent, change requests, stale-link handling and atomic reservation replacement.
 - Manual deposit records, production holds, revision-bound tickets and production start.
+- [Ready for handover](docs/handover.md): collection/delivery choices, exact delivery-fee consent, remaining-payment receipts and recorded completion. Customer notification text is prepared for manual sharing.
 - Separate owner and operator permissions, membership management and platform support metadata.
 - Private PNG/JPEG/PDF attachments for owners, with size and content-type checks.
 - Configurable merchandise and bakery profiles, including prices, variants, stock, dated capacity and deposit requirements.
@@ -65,6 +66,8 @@ For judge access, enable the [one-click live demo](docs/judge-demo.md). **Try th
 4. Share the option for 45 charcoal shirts at the original Friday pickup: $810, with $135 additional deposit. Sharing alone does not reserve the new resources.
 5. Open the customer view, review the differences, check consent and approve. Production remains blocked until the required deposit is recorded.
 6. For this sample only, record the $135 deposit with a clearly labeled test reference. View the accepted work order and start production.
+7. In the current source, open **Handover** when the product is finished. Prepare the collection/delivery details, create a private customer link and copy the notification text. This requires the latest deployed migration and frontend.
+8. On that link, choose collection or request delivery. For delivery, prepare the fee in the owner workbench and return to the customer link to accept it. Record the remaining sample balance, then mark collected or dispatch and mark delivered. The original production agreement remains intact.
 
 Revision numbers depend on how many proposals have been prepared. A second bakery sample exercises the same rules with batch capacity measured in minutes. Create another sample workspace to repeat a scenario; started work is intentionally not reset automatically.
 
@@ -90,7 +93,7 @@ For the $50 hackathon allowance, use the [single-host deployment](deploy/budget-
 
 Live verification is documented separately from configuration in [the hosted Mantle check](docs/live-mantle-checks.md) and [storage/Cognito checks](docs/live-aws-checks.md). Model access varies by AWS account and endpoint. A failed model call remains a failed analysis; the app does not silently replace it with reference interpretation.
 
-Paid jobs have a global daily attempt allowance across all workspaces, including retries. `OTW_MAX_DAILY_BEDROCK_ATTEMPTS=0` pauses paid work. Per-run output, turn and token limits reduce exposure; the token limit is checked between turns and is not an AWS dollar spending cap. The execution record displays reported input/output tokens.
+Ordinary paid jobs have a global daily attempt allowance across workspaces, including retries. Protected reviewer attempts are separately metered as described in [reviewer access](docs/judge-demo.md). `OTW_MAX_DAILY_BEDROCK_ATTEMPTS=0` pauses all paid work. Per-run output, turn and token limits reduce exposure; the token limit is checked between turns and is not an AWS dollar spending cap. The execution record displays reported input/output tokens. Handover does not invoke a model.
 
 Never commit credentials, `.env`, `.data`, database dumps or real customer files. The repository ignores local secrets and runtime data.
 

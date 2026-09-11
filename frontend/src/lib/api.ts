@@ -42,7 +42,12 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
         ? await response.json()
         : await response.text();
   if (!response.ok) {
-    if (response.status === 401 && !path.startsWith('/auth/') && !path.startsWith('/customer/')) {
+    if (
+      response.status === 401 &&
+      !path.startsWith('/auth/') &&
+      !path.startsWith('/customer/') &&
+      !path.startsWith('/handover/')
+    ) {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
     const detail = typeof data === 'object' && data ? (data.detail ?? data) : data;

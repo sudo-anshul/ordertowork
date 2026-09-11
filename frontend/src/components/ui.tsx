@@ -99,7 +99,7 @@ export function ErrorNotice({
         <strong>{title}</strong>
         <p>{message}</p>
         {retry && (
-          <Button variant="ghost" onClick={retry}>
+          <Button type="button" variant="ghost" onClick={retry}>
             <RefreshCw size={15} /> Try again
           </Button>
         )}

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ordertowork.db import Base, new_id, utcnow
@@ -33,6 +33,7 @@ class Workspace(Base):
     )
     demo_agent_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     reviewer_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    handover_settings: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

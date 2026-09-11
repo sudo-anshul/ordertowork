@@ -18,6 +18,22 @@ function orderDescription(order: OrderSummary) {
   if (order.status === 'deposit_due')
     return 'The accepted revision is reserved. Record the required deposit before work starts.';
   if (order.status === 'in_production') return 'Your team has started the accepted work order.';
+  if (order.status === 'ready_for_handover')
+    return order.handover_status === 'delivery_requested'
+      ? 'Review the customer’s delivery address and prepare the exact fee for approval.'
+      : order.handover_status === 'quote_ready'
+        ? 'The delivery quote is waiting for the customer’s approval.'
+        : order.handover_status === 'awaiting_choice'
+          ? 'The items are ready. The customer can choose collection or request delivery.'
+          : 'The items are finished. Prepare collection details and delivery options.';
+  if (order.status === 'awaiting_collection')
+    return 'The customer confirmed collection. Record the received balance before handing over the items.';
+  if (order.status === 'awaiting_dispatch')
+    return 'The customer accepted the delivery quote. Record the received balance and arrange dispatch.';
+  if (order.status === 'out_for_delivery')
+    return 'The order has been dispatched. Mark it delivered when the customer receives it.';
+  if (order.status === 'completed')
+    return 'The accepted order, payment and final handover are recorded.';
   return 'The agreement, resource reservations, and required deposit are recorded.';
 }
 
@@ -29,8 +45,18 @@ export function DecisionsPage() {
     { pollMs: 10000 },
   );
   const orders = data?.orders ?? [];
-  const decisions = orders.filter((order) =>
-    ['needs_review', 'new', 'on_hold'].includes(order.status),
+  const decisions = orders.filter(
+    (order) =>
+      [
+        'needs_review',
+        'new',
+        'on_hold',
+        'awaiting_collection',
+        'awaiting_dispatch',
+        'out_for_delivery',
+      ].includes(order.status) ||
+      (order.status === 'ready_for_handover' &&
+        (!order.handover_status || order.handover_status === 'delivery_requested')),
   );
   const waiting = orders.filter((order) => !decisions.includes(order));
   const owner = workspace.role === 'owner';
@@ -82,9 +108,19 @@ export function DecisionsPage() {
                         <h2>
                           {order.hold_reason
                             ? 'A hold needs a decision.'
-                            : order.accepted_revision
-                              ? 'A customer request needs a closer look.'
-                              : 'A new order starts here.'}
+                            : order.production_status === 'finished'
+                              ? order.handover_status === 'delivery_requested'
+                                ? 'A delivery address needs your review.'
+                                : order.status === 'out_for_delivery'
+                                  ? 'Follow through on the final delivery.'
+                                  : order.status === 'awaiting_collection'
+                                    ? 'The customer is coming to collect.'
+                                    : order.status === 'awaiting_dispatch'
+                                      ? 'Delivery is agreed. Arrange dispatch.'
+                                      : 'The work is finished. Prepare handover.'
+                              : order.accepted_revision
+                                ? 'A customer request needs a closer look.'
+                                : 'A new order starts here.'}
                         </h2>
                         <OrderBadge status={order.status} />
                       </div>
@@ -92,9 +128,10 @@ export function DecisionsPage() {
                     </div>
                     <Link
                       className="button button-primary"
-                      to={`/w/${workspace.id}/orders/${order.id}`}
+                      to={`/w/${workspace.id}/orders/${order.id}${order.production_status === 'finished' ? '?tab=handover' : ''}`}
                     >
-                      Review order <ArrowRight size={17} />
+                      {order.production_status === 'finished' ? 'Review handover' : 'Review order'}{' '}
+                      <ArrowRight size={17} />
                     </Link>
                   </div>
                   <div className="decision-card-footer">
@@ -102,7 +139,11 @@ export function DecisionsPage() {
                     {order.accepted_revision
                       ? `Revision ${order.accepted_revision.number} remains the accepted order.`
                       : 'Customer consent is required before confirming the order.'}
-                    <span>A request is distinct from an approval.</span>
+                    <span>
+                      {order.production_status === 'finished'
+                        ? 'A clear choice before the final handover.'
+                        : 'A request is distinct from an approval.'}
+                    </span>
                   </div>
                 </Panel>
               ))}
@@ -136,7 +177,7 @@ export function DecisionsPage() {
                 waiting.map((order) => (
                   <Link
                     key={order.id}
-                    to={`/w/${workspace.id}/orders/${order.id}`}
+                    to={`/w/${workspace.id}/orders/${order.id}${order.production_status === 'finished' ? '?tab=handover' : ''}`}
                     className="quiet-order"
                   >
                     <span className="quiet-order-icon">
@@ -212,7 +253,16 @@ export function OrdersPage({ production = false }: { production?: boolean }) {
       `${order.customer_name} ${order.number}`.toLowerCase().includes(query.toLowerCase()) &&
       (status === 'all' || order.status === status),
   );
-  const ready = orders.filter((order) => ['ready', 'in_production'].includes(order.status));
+  const ready = orders.filter((order) =>
+    [
+      'ready',
+      'in_production',
+      'ready_for_handover',
+      'awaiting_collection',
+      'awaiting_dispatch',
+      'out_for_delivery',
+    ].includes(order.status),
+  );
   const shown = production ? ready : orders;
   return (
     <>

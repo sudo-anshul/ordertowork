@@ -243,6 +243,22 @@ def start(
     return result
 
 
+@router.post("/workspaces/{workspace_id}/orders/{order_id}/production/finish")
+def finish(
+    workspace_id: str,
+    order_id: str,
+    body: ProductionStartInput,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(get_actor),
+):
+    membership = require_membership(db, actor, workspace_id)
+    result = service.finish_production(db, workspace_id, order_id, body.expected_revision)
+    if membership.role == "operator":
+        result = service.operational_ticket(result)
+    db.commit()
+    return result
+
+
 @router.get("/workspaces/{workspace_id}/resources")
 def resources(workspace_id: str, db: Session = Depends(get_db), actor: Actor = Depends(get_actor)):
     owner(db, actor, workspace_id)

@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 
-from ordertowork.api import auth, files, jobs, orders, workspaces
+from ordertowork.api import auth, files, handover, jobs, orders, workspaces
 from ordertowork.config import get_settings
 from ordertowork.db import session_factory
 
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(workspaces.router)
     app.include_router(workspaces.platform_router)
     app.include_router(orders.router, prefix="/api")
+    app.include_router(handover.router)
     app.include_router(jobs.router)
     app.include_router(files.router)
 

@@ -75,7 +75,13 @@ export type OrderStatus =
   | 'deposit_due'
   | 'on_hold'
   | 'in_production'
+  | 'ready_for_handover'
+  | 'awaiting_collection'
+  | 'awaiting_dispatch'
+  | 'out_for_delivery'
+  | 'completed'
   | 'new';
+export type ProductionStatus = 'not_started' | 'started' | 'finished';
 export interface OrderSummary {
   id: string;
   number: string;
@@ -83,7 +89,8 @@ export interface OrderSummary {
   customer_email: string | null;
   is_demo: boolean;
   status: OrderStatus;
-  production_status: 'not_started' | 'started';
+  production_status: ProductionStatus;
+  handover_status: HandoverStatus | null;
   hold_reason: string | null;
   accepted_revision: Revision | null;
   deposit_paid_cents: number;
@@ -125,6 +132,7 @@ export interface AnalysisJob {
   tool_events?: { tool: string; input?: Record<string, unknown>; result?: unknown }[];
 }
 export interface OrderDetail extends OrderSummary {
+  handover: Handover | null;
   revisions: Revision[];
   messages: Message[];
   events: OrderEvent[];
@@ -189,7 +197,7 @@ export interface Ticket {
   balance_cents: number;
   reservations: Reservation[];
   is_demo: boolean;
-  production_status: 'not_started' | 'started';
+  production_status: ProductionStatus;
 }
 export interface Member {
   id: string;
@@ -215,14 +223,14 @@ export interface OperationalTicket {
   terms: OperationalTerms;
   reservations: Reservation[];
   is_demo: boolean;
-  production_status: 'not_started' | 'started';
+  production_status: ProductionStatus;
 }
 export interface ProductionOrder {
   id: string;
   number: string;
   customer_name: string;
   is_demo: boolean;
-  production_status: 'not_started' | 'started';
+  production_status: ProductionStatus;
   revision: number;
   pickup_at: string;
   product_name: string;
@@ -230,4 +238,79 @@ export interface ProductionOrder {
   variant: string;
   sizes: Record<string, number>;
   specification: Record<string, string>;
+}
+
+export type HandoverStatus =
+  | 'awaiting_choice'
+  | 'delivery_requested'
+  | 'quote_ready'
+  | 'confirmed'
+  | 'out_for_delivery'
+  | 'collected'
+  | 'delivered';
+export type DeliveryMode = 'unavailable' | 'included' | 'fixed' | 'quote';
+export interface HandoverDefaults {
+  collection_address: string;
+  collection_instructions: string;
+  delivery_mode: DeliveryMode;
+  delivery_fee_cents: number;
+  delivery_area: string;
+}
+export interface HandoverPricing {
+  order_total_cents: number;
+  delivery_fee_cents: number | null;
+  total_cents: number | null;
+  paid_cents: number;
+  balance_cents: number | null;
+  currency: string;
+}
+export interface Handover {
+  id: string;
+  version: number;
+  status: HandoverStatus;
+  revision: number;
+  config: HandoverDefaults & {
+    timezone?: string;
+    collection_window_start: string;
+    collection_window_end: string;
+  };
+  method: 'collection' | 'delivery' | null;
+  collection_at: string | null;
+  delivery_address: string | null;
+  contact_phone: string | null;
+  customer_note: string | null;
+  delivery_fee_cents: number | null;
+  quote_note: string | null;
+  quote_hash: string | null;
+  pricing: HandoverPricing;
+  on_hold: boolean;
+  ready_at: string;
+  confirmed_at: string | null;
+  dispatched_at: string | null;
+  completed_at: string | null;
+  link_active?: boolean;
+  link_expires_at?: string | null;
+}
+export interface HandoverResponse {
+  handover: Handover | null;
+  defaults: HandoverDefaults;
+}
+export interface HandoverShare {
+  url: string;
+  expires_at: string;
+  notification_text: string;
+}
+export interface CustomerHandover {
+  business: { name: string; currency: string; timezone: string };
+  order: {
+    number: string;
+    customer_name: string;
+    is_demo: boolean;
+    revision: number;
+    product_name: string;
+    quantity: number;
+    variant: string;
+  };
+  handover: Handover;
+  expires_at: string;
 }
