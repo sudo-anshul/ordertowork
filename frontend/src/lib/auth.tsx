@@ -57,14 +57,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionNotice(
         session.auth_method === 'demo'
           ? 'Your demo session has ended. Start a fresh demo to explore again.'
-          : 'Your session has ended. Sign in again to continue.',
+          : session.auth_method === 'reviewer'
+            ? 'Your reviewer session has ended. Open your reviewer link to continue.'
+            : 'Your session has ended. Sign in again to continue.',
       );
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, expire);
-    const expiresAt = session.demo ? Date.parse(session.demo.expires_at) : NaN;
-    const timeout = Number.isFinite(expiresAt)
-      ? window.setTimeout(expire, Math.max(0, expiresAt - Date.now()))
-      : undefined;
+    const access = session.reviewer ?? session.demo;
+    const expiresAt = access ? Date.parse(access.expires_at) : NaN;
+    let timeout: number | undefined;
+    const checkExpiry = () => {
+      if (!Number.isFinite(expiresAt)) return;
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) expire();
+      // Browser timers overflow after ~24.8 days. Reviewer sessions can last longer.
+      else timeout = window.setTimeout(checkExpiry, Math.min(remaining, 2147483647));
+    };
+    checkExpiry();
     return () => {
       window.removeEventListener(SESSION_EXPIRED_EVENT, expire);
       window.clearTimeout(timeout);

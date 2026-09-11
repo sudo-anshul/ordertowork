@@ -21,7 +21,8 @@ export interface Session {
   user: User;
   workspaces: Workspace[];
   csrf_token: string;
-  auth_method: 'demo' | 'cognito' | 'development';
+  auth_method: 'demo' | 'reviewer' | 'cognito' | 'development';
+  reviewer: { expires_at: string } | null;
   demo: {
     expires_at: string;
     max_agent_jobs_per_workspace: number;

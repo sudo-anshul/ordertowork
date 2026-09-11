@@ -214,7 +214,7 @@ def complete_workflow(visitor, customer, origin, path, revision, check):
     check["status"] = "passed"
 
 
-def run(origin, report):
+def run(origin, report, *, reviewer_token=None):
     # Fresh in-memory clients: no business cookies, redirect following or request retries.
     with (
         httpx.Client(base_url=origin, timeout=20, headers={"Origin": origin}) as visitor,
@@ -223,12 +223,19 @@ def run(origin, report):
         session_started = False
         try:
             config = payload(visitor.get("/api/auth/config"))
-            require(config.get("demo_enabled") is True, "guest_demo_disabled")
-            session = payload(visitor.post("/api/auth/demo"))
+            if reviewer_token:
+                session = payload(
+                    visitor.post("/api/auth/reviewer", json={"token": reviewer_token})
+                )
+            else:
+                require(config.get("demo_enabled") is True, "guest_demo_disabled")
+                session = payload(visitor.post("/api/auth/demo"))
             session_started = True
             visitor.headers["X-CSRF-Token"] = session["csrf_token"]
-            require(session.get("auth_method") == "demo", "session_is_not_a_guest")
-            require(bool(session.get("demo", {}).get("expires_at")), "guest_session_has_no_expiry")
+            method = "reviewer" if reviewer_token else "demo"
+            report["access_mode"] = method
+            require(session.get("auth_method") == method, "unexpected_access_method")
+            require(bool(session.get(method, {}).get("expires_at")), "session_has_no_expiry")
             require(session["user"].get("is_platform_admin") is False, "guest_has_admin_privilege")
             workspaces = session.get("workspaces", [])
             require(len(workspaces) == 2, "expected_two_guest_workspaces")
@@ -272,6 +279,11 @@ def main():
         "--run-paid-check", action="store_true", help="Allow at most two paid analyses"
     )
     parser.add_argument("--output", type=Path, help="Optional sanitized JSON report path")
+    parser.add_argument(
+        "--reviewer-access-file",
+        type=Path,
+        help="Private file from create_reviewer_link.py; never pass the token on the command line",
+    )
     args = parser.parse_args()
     report = {
         "checked_at": datetime.now(UTC).isoformat(),
@@ -292,7 +304,20 @@ def main():
             report["origin"] = origin_url(args.url)
         if args.run_paid_check:
             require(bool(args.url), "url_required_for_paid_check")
-            run(report["origin"], report)
+            reviewer_token = None
+            if args.reviewer_access_file:
+                private_access = json.loads(args.reviewer_access_file.read_text())
+                parsed = urlsplit(private_access["url"])
+                require(
+                    f"{parsed.scheme}://{parsed.netloc}" == report["origin"],
+                    "reviewer_origin_mismatch",
+                )
+                reviewer_token = private_access["token"]
+                require(
+                    isinstance(reviewer_token, str) and 32 <= len(reviewer_token) <= 256,
+                    "invalid_reviewer_file",
+                )
+            run(report["origin"], report, reviewer_token=reviewer_token)
     except Exception as error:
         report["status"] = "failed"
         report["error"] = str(error) if isinstance(error, CheckFailed) else type(error).__name__

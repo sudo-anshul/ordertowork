@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import AwareDatetime, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     session_cookie: str = "otw_session"
     session_hours: int = 12
     demo_enabled: bool = False
+    reviewer_token_hash: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
+    reviewer_expires_at: AwareDatetime | None = None
     demo_session_minutes: int = Field(default=60, ge=5, le=120)
     max_daily_demo_sessions: int = Field(default=50, ge=0, le=200)
     max_demo_agent_jobs: int = Field(default=2, ge=0, le=5)
@@ -48,6 +50,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_is_explicit(self):
+        if bool(self.reviewer_token_hash) != bool(self.reviewer_expires_at):
+            raise ValueError("Reviewer access requires both a token hash and an aware expiry")
         if self.environment == "production":
             if self.auth_mode != "cognito":
                 raise ValueError("Production requires Cognito authentication")

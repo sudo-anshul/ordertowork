@@ -7,6 +7,7 @@ import os
 import re
 import secrets
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -36,6 +37,8 @@ OPTIONAL = {
     "OTW_AGENT_MAX_TURNS",
     "OTW_AGENT_MAX_TOTAL_TOKENS",
     "OTW_DEMO_ENABLED",
+    "OTW_REVIEWER_TOKEN_HASH",
+    "OTW_REVIEWER_EXPIRES_AT",
     "OTW_DEMO_SESSION_MINUTES",
     "OTW_MAX_DAILY_DEMO_SESSIONS",
     "OTW_MAX_DEMO_AGENT_JOBS",
@@ -121,6 +124,21 @@ def load_config(path: Path) -> dict[str, str]:
         raise ValueError("OTW_COGNITO_DOMAIN must be an HTTPS origin")
     values["OTW_COGNITO_DOMAIN"] = values["OTW_COGNITO_DOMAIN"].rstrip("/")
     resolved = DEFAULTS | values
+    reviewer_hash = resolved.get("OTW_REVIEWER_TOKEN_HASH", "")
+    reviewer_expiry = resolved.get("OTW_REVIEWER_EXPIRES_AT", "")
+    if bool(reviewer_hash) != bool(reviewer_expiry):
+        raise ValueError("Reviewer access requires both token hash and expiry")
+    if reviewer_hash:
+        if not re.fullmatch(r"[a-f0-9]{64}", reviewer_hash):
+            raise ValueError(
+                "OTW_REVIEWER_TOKEN_HASH must be a SHA-256 hash, not the raw link token"
+            )
+        try:
+            expires = datetime.fromisoformat(reviewer_expiry)
+        except ValueError as exc:
+            raise ValueError("OTW_REVIEWER_EXPIRES_AT must be an ISO datetime") from exc
+        if expires.tzinfo is None or expires.utcoffset() is None:
+            raise ValueError("OTW_REVIEWER_EXPIRES_AT requires an explicit timezone")
     if resolved["OTW_BEDROCK_ENDPOINT"] not in {"runtime", "mantle"}:
         raise ValueError("OTW_BEDROCK_ENDPOINT must be runtime or mantle")
     if not re.fullmatch(

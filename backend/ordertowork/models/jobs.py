@@ -20,9 +20,13 @@ class AgentDailyUsage(Base):
     """Global paid-run reservations, independent of workspace creation and retries."""
 
     __tablename__ = "agent_daily_usage"
-    __table_args__ = (CheckConstraint("attempts >= 0", name="nonnegative_agent_attempts"),)
+    __table_args__ = (
+        CheckConstraint("attempts >= 0", name="nonnegative_agent_attempts"),
+        CheckConstraint("reviewer_attempts >= 0", name="nonnegative_reviewer_attempts"),
+    )
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    reviewer_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Job(Base):

@@ -26,7 +26,7 @@ from ordertowork.models.domain import (
     Resource,
     SourceMessage,
 )
-from ordertowork.services.demo import demo_workspace_active
+from ordertowork.services.demo import demo_workspace_active, public_demo_workspace
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -52,7 +52,7 @@ def get_order(db: Session, workspace_id: str, order_id: str, *, lock=False) -> O
         fail("not_found", "Order not found.", 404)
     if lock:
         workspace = get_workspace(db, workspace_id)
-        if workspace.demo_expires_at is not None:
+        if public_demo_workspace(workspace):
             events = (
                 db.scalar(
                     select(func.count())
@@ -596,7 +596,7 @@ def record_message(
 ) -> SourceMessage:
     order = get_order(db, workspace_id, order_id, lock=True)
     workspace = get_workspace(db, workspace_id)
-    if workspace.demo_expires_at is not None:
+    if public_demo_workspace(workspace):
         count = (
             db.scalar(
                 select(func.count())

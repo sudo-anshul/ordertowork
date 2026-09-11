@@ -37,7 +37,10 @@ export function LoginPage() {
       () => post<Session>('/auth/development-login', { email, name }),
       (result) => {
         const requestedDestination = (location.state as { from?: string } | null)?.from;
-        setDestination(requestedDestination?.startsWith('/w/') ? requestedDestination : '/');
+        const permittedDestination = result.workspaces.some((workspace) =>
+          requestedDestination?.startsWith(`/w/${workspace.id}/`),
+        );
+        setDestination(permittedDestination && requestedDestination ? requestedDestination : '/');
         acceptSession(result);
       },
     );

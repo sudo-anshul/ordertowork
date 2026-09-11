@@ -4,6 +4,7 @@ from ordertowork.db import get_db, utcnow
 from ordertowork.models.core import Workspace
 from ordertowork.models.jobs import Job
 from ordertowork.services.auth import Actor, get_actor, require_membership
+from ordertowork.services.demo import public_demo_workspace
 from ordertowork.services.jobs import job_payload
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -35,7 +36,7 @@ def retry_job(
     job = owned_job(db, workspace_id, job_id, lock=True)
     workspace = db.get(Workspace, workspace_id)
     if (
-        workspace.demo_expires_at is not None
+        public_demo_workspace(workspace)
         and workspace.demo_agent_attempts >= get_settings().max_demo_agent_jobs
     ):
         raise HTTPException(

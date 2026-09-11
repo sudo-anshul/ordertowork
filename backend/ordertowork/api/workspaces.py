@@ -14,6 +14,7 @@ from ordertowork.services.auth import (
     development_enabled,
     fail,
     get_actor,
+    is_reviewer_actor,
     normalize_email,
     platform_admin,
     require_business_actor,
@@ -122,14 +123,16 @@ def create_workspace(
         currency=body.currency,
         timezone=body.timezone,
         deposit_bps=body.deposit_bps,
-        is_demo=body.seed_demo,
+        is_demo=body.seed_demo or is_reviewer_actor(actor),
+        demo_expires_at=actor.session.expires_at if is_reviewer_actor(actor) else None,
+        reviewer_token_hash=actor.session.reviewer_token_hash if is_reviewer_actor(actor) else None,
     )
     db.add(workspace)
     db.flush()
     member = Membership(workspace_id=workspace.id, user_id=actor.user.id, role="owner")
     db.add(member)
     if body.seed_demo:
-        seed_workspace(db, workspace)
+        seed_workspace(db, workspace, relative_dates=is_reviewer_actor(actor))
     else:
         configure_workspace(db, workspace)
     audit(db, "workspace.created", actor.user.id, workspace.id, {"seed_demo": body.seed_demo})

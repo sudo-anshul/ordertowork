@@ -1,10 +1,17 @@
 import { ChevronDown, Clock3 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { Badge } from './ui';
+import { post } from '../lib/api';
+import { sampleDestination } from '../lib/demo';
+import { useAction } from '../lib/hooks';
+import type { Session } from '../lib/types';
+import { Badge, Button, ErrorNotice } from './ui';
 
 export function DemoGuide() {
-  const { session } = useAuth();
+  const { session, acceptSession } = useAuth();
+  const navigate = useNavigate();
+  const reset = useAction();
   const [now, setNow] = useState(Date.now());
   const [expanded, setExpanded] = useState(() => window.matchMedia('(min-width: 781px)').matches);
   useEffect(() => {
@@ -12,6 +19,61 @@ export function DemoGuide() {
     const interval = window.setInterval(() => setNow(Date.now()), 30000);
     return () => window.clearInterval(interval);
   }, [session?.demo]);
+  if (session?.auth_method === 'reviewer' && session.reviewer) {
+    const expires = new Date(session.reviewer.expires_at).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    return (
+      <section className="demo-guide" aria-label="Reviewer guide">
+        <div className="demo-guide-content">
+          <div className="section-title">
+            <Badge tone="green">Reviewer access</Badge>
+            <strong>Follow a customer change through to work.</strong>
+          </div>
+          <ol aria-label="Suggested reviewer walkthrough">
+            <li>
+              <span>01</span> Add a customer message
+            </li>
+            <li>
+              <span>02</span> Compare checked options
+            </li>
+            <li>
+              <span>03</span> Approve the exact revision
+            </li>
+            <li>
+              <span>04</span> Record a sample deposit &amp; start work
+            </li>
+          </ol>
+          <p>
+            These sample businesses are yours to explore through {expires}. Live analyses are
+            separate from public demo allowances. Prepared proposals use reference rules; a new
+            message runs a fresh analysis. Its execution record identifies the model and tool
+            checks.
+          </p>
+          <p>
+            Use fictional data. You can create orders, adjust business rules and upload sample
+            files. Start fresh examples whenever you want to repeat the walkthrough.
+          </p>
+          <Button
+            busy={reset.pending}
+            onClick={() =>
+              void reset.run(async () => {
+                const next = await post<Session>('/auth/reviewer/reset');
+                const destination = await sampleDestination(next);
+                acceptSession(next);
+                navigate(destination);
+              })
+            }
+          >
+            Start fresh examples
+          </Button>
+          <ErrorNotice message={reset.error} />
+        </div>
+      </section>
+    );
+  }
   if (session?.auth_method !== 'demo' || !session.demo) return null;
   const minutes = Math.max(0, Math.ceil((Date.parse(session.demo.expires_at) - now) / 60000));
   return (

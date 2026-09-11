@@ -118,3 +118,38 @@ def test_mantle_policy_scopes_model_project_region_and_short_term_tokens():
             module.mantle_policy("123456789012", "us-east-1", invalid)
     with pytest.raises(ValueError):
         module.mantle_policy("123456789012", "us-east-1", project="*")
+
+
+def test_reviewer_hash_and_expiry_survive_release_without_raw_token(
+    deployment, manifests, tmp_path
+):
+    host, services = manifests
+    services["app_env"].update(
+        OTW_REVIEWER_TOKEN_HASH="a" * 64,
+        OTW_REVIEWER_EXPIRES_AT="2026-10-16T00:00:00Z",
+    )
+    settings = deployment.release_config(host, services, "sha256:" + "a" * 64)
+    module = deployment.budget_module()
+    module.write_config(settings, tmp_path)
+    runtime = module.read_generated_env(tmp_path / "runtime.env")
+    assert runtime["OTW_REVIEWER_TOKEN_HASH"] == "a" * 64
+    assert runtime["OTW_REVIEWER_EXPIRES_AT"] == "2026-10-16T00:00:00Z"
+    assert "OTW_REVIEWER_TOKEN" not in runtime
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"OTW_REVIEWER_TOKEN_HASH": "a" * 64},
+        {"OTW_REVIEWER_EXPIRES_AT": "2026-10-16T00:00:00Z"},
+        {
+            "OTW_REVIEWER_TOKEN_HASH": "raw-link-token",
+            "OTW_REVIEWER_EXPIRES_AT": "2026-10-16T00:00:00Z",
+        },
+        {"OTW_REVIEWER_TOKEN_HASH": "a" * 64, "OTW_REVIEWER_EXPIRES_AT": "2026-10-16T00:00:00"},
+    ],
+)
+def test_reviewer_deploy_rejects_incomplete_naive_or_secret_values(deployment, manifests, values):
+    manifests[1]["app_env"].update(values)
+    with pytest.raises(ValueError):
+        deployment.release_config(*manifests, "sha256:" + "a" * 64)

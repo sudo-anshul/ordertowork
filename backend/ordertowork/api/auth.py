@@ -21,6 +21,7 @@ from ordertowork.services.auth import (
     exchange_code,
     fail,
     get_actor,
+    is_reviewer_actor,
     issue_session,
     normalize_email,
     pkce_challenge,
@@ -40,6 +41,12 @@ OAUTH_COOKIE = "otw_login_state"
 
 class DemoLogin(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ReviewerLogin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=32, max_length=256, repr=False)
+    replace_business_session: bool = False
 
 
 class DevelopmentLogin(BaseModel):
@@ -156,6 +163,85 @@ def demo_login(
     db.commit()
     response.headers["Cache-Control"] = "no-store"
     return actor_payload(db, Actor(user, session.csrf_token, session))
+
+
+def new_reviewer_session(request: Request, response: Response, db: Session) -> dict:
+    from ordertowork.services.profiles import seed_workspace
+
+    settings = get_settings()
+    identifier = new_id()
+    user = User(
+        provider_subject=f"reviewer:{identifier}",
+        email=f"reviewer-{identifier}@ordertowork.invalid",
+        name="Project reviewer",
+        email_verified=False,
+        is_platform_admin=False,
+    )
+    db.add(user)
+    db.flush()
+    for profile, name in (("merchandise", "Common Ground Merch"), ("bakery", "Butter & Crumb")):
+        workspace = Workspace(
+            name=name,
+            profile=profile,
+            is_demo=True,
+            demo_expires_at=settings.reviewer_expires_at,
+            reviewer_token_hash=settings.reviewer_token_hash,
+        )
+        db.add(workspace)
+        db.flush()
+        db.add(Membership(workspace_id=workspace.id, user_id=user.id, role="owner"))
+        seed_workspace(db, workspace, relative_dates=True)
+    revoke_existing_session(request, db)
+    session = issue_session(
+        db,
+        user,
+        "reviewer",
+        response,
+        expires_at=settings.reviewer_expires_at,
+        reviewer_token_hash=settings.reviewer_token_hash,
+    )
+    audit(db, "auth.reviewer_started", user.id)
+    db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return actor_payload(db, Actor(user, session.csrf_token, session))
+
+
+@router.post("/reviewer")
+def reviewer_login(
+    body: ReviewerLogin, request: Request, response: Response, db: Session = Depends(get_db)
+) -> dict:
+    from ordertowork.services.demo import reviewer_access_active
+
+    check_request_origin(request, get_settings())
+    if not reviewer_access_active(digest(body.token)):
+        raise fail(
+            403, "reviewer_link_unavailable", "This reviewer link is invalid or has expired."
+        )
+    existing = request_session(request, db)
+    if existing and existing.auth_method == "reviewer":
+        user = db.get(User, existing.user_id)
+        if user:
+            response.headers["Cache-Control"] = "no-store"
+            return actor_payload(db, Actor(user, existing.csrf_token, existing))
+    if existing and existing.auth_method != "demo" and not body.replace_business_session:
+        raise fail(
+            409,
+            "business_session_active",
+            "You have a business session open. Switch to a separate reviewer workspace to continue.",
+        )
+    return new_reviewer_session(request, response, db)
+
+
+@router.post("/reviewer/reset")
+def reviewer_reset(
+    request: Request,
+    response: Response,
+    actor: Actor = Depends(get_actor),
+    db: Session = Depends(get_db),
+) -> dict:
+    if not is_reviewer_actor(actor):
+        raise fail(403, "reviewer_required", "Reviewer access is required.")
+    return new_reviewer_session(request, response, db)
 
 
 @router.post("/development-login")
@@ -325,5 +411,7 @@ def logout(
     response.headers["Cache-Control"] = "no-store"
     return {
         "ok": True,
-        "logout_url": None if actor.session.auth_method == "demo" else cognito_logout_url(settings),
+        "logout_url": None
+        if actor.session.auth_method in {"demo", "reviewer"}
+        else cognito_logout_url(settings),
     }

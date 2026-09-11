@@ -1,5 +1,6 @@
 """Temporary guest lifecycle and shared, transactional demo budget reservations."""
 
+import secrets
 from datetime import UTC
 
 from ordertowork.config import get_settings
@@ -9,13 +10,34 @@ from ordertowork.models.core import Workspace
 from sqlalchemy.orm import Session
 
 
+def reviewer_access_active(token_hash: str | None) -> bool:
+    settings = get_settings()
+    return bool(
+        token_hash
+        and settings.reviewer_token_hash
+        and secrets.compare_digest(token_hash, settings.reviewer_token_hash)
+        and settings.reviewer_expires_at
+        and settings.reviewer_expires_at > utcnow()
+    )
+
+
+def public_demo_workspace(workspace: Workspace) -> bool:
+    return workspace.demo_expires_at is not None and workspace.reviewer_token_hash is None
+
+
 def demo_workspace_active(workspace: Workspace) -> bool:
+    if workspace.reviewer_token_hash and (
+        workspace.demo_expires_at is None
+        or not reviewer_access_active(workspace.reviewer_token_hash)
+    ):
+        return False
     if workspace.demo_expires_at is None:
         return True
     deadline = workspace.demo_expires_at
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=UTC)
-    return get_settings().demo_enabled and deadline > utcnow()
+    enabled = bool(workspace.reviewer_token_hash) or get_settings().demo_enabled
+    return enabled and deadline > utcnow()
 
 
 def _reserve_daily(db: Session, column: str, limit: int) -> bool:

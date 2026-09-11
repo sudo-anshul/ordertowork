@@ -7,8 +7,13 @@ from ordertowork.config import get_settings
 from ordertowork.db import new_id, utcnow
 from ordertowork.models.core import Workspace
 from ordertowork.models.jobs import AgentDailyUsage, Job
-from ordertowork.services.demo import demo_workspace_active, reserve_demo_bedrock_attempt
-from sqlalchemy import func, or_, select, update
+from ordertowork.services.demo import (
+    demo_workspace_active,
+    public_demo_workspace,
+    reserve_demo_bedrock_attempt,
+    reviewer_access_active,
+)
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 
@@ -42,7 +47,7 @@ def enqueue_analysis(db: Session, workspace_id: str, order_id: str, message_id: 
     )
     if existing:
         return existing
-    if workspace.demo_expires_at is not None:
+    if public_demo_workspace(workspace):
         lifetime_jobs = (
             db.scalar(select(func.count()).select_from(Job).where(Job.workspace_id == workspace_id))
             or 0
@@ -70,7 +75,7 @@ def enqueue_analysis(db: Session, workspace_id: str, order_id: str, message_id: 
         )
         or 0
     )
-    if daily_count >= settings.max_daily_agent_jobs:
+    if not workspace.reviewer_token_hash and daily_count >= settings.max_daily_agent_jobs:
         raise HTTPException(
             429, detail={"code": "usage_limit", "message": "Daily analysis limit reached."}
         )
@@ -86,7 +91,7 @@ def enqueue_analysis(db: Session, workspace_id: str, order_id: str, message_id: 
     return job
 
 
-def reserve_bedrock_attempt(db: Session) -> bool:
+def reserve_bedrock_attempt(db: Session, *, reviewer: bool = False) -> bool:
     """Atomically reserve one paid run before invoking a provider, across all tenants.
 
     Retried/expired jobs reserve again. Failed runs are not refunded because the
@@ -101,18 +106,23 @@ def reserve_bedrock_attempt(db: Session) -> bool:
     else:
         from sqlalchemy.dialects.sqlite import insert
 
-    statement = insert(AgentDailyUsage).values(day=utcnow().date(), attempts=1)
+    counter = AgentDailyUsage.reviewer_attempts if reviewer else AgentDailyUsage.attempts
+    statement = insert(AgentDailyUsage).values(
+        day=utcnow().date(), attempts=int(not reviewer), reviewer_attempts=int(reviewer)
+    )
     statement = statement.on_conflict_do_update(
         index_elements=[AgentDailyUsage.day],
-        set_={"attempts": AgentDailyUsage.attempts + 1},
-        where=AgentDailyUsage.attempts < limit,
-    ).returning(AgentDailyUsage.attempts)
+        set_={counter.key: counter + 1},
+        where=True if reviewer else counter < limit,
+    ).returning(counter)
     return db.scalar(statement) is not None
 
 
 def reserve_job_attempt(db: Session, workspace: Workspace, job: Job) -> str | None:
     """Reserve all applicable limits together; a partial reservation never consumes allowance."""
     settings = get_settings()
+    if workspace.reviewer_token_hash and not demo_workspace_active(workspace):
+        return "This reviewer access has ended."
     if workspace.demo_expires_at is None and job.mode != "bedrock":
         return None
     if db.get_bind().dialect.name == "sqlite":
@@ -123,7 +133,7 @@ def reserve_job_attempt(db: Session, workspace: Workspace, job: Job) -> str | No
         if not connection.connection.driver_connection.in_transaction:
             connection.exec_driver_sql("BEGIN")
     with db.begin_nested() as reservation:
-        if workspace.demo_expires_at is not None:
+        if public_demo_workspace(workspace):
             claimed = db.execute(
                 update(Workspace)
                 .where(
@@ -140,10 +150,12 @@ def reserve_job_attempt(db: Session, workspace: Workspace, job: Job) -> str | No
             if job.mode == "bedrock" and not reserve_demo_bedrock_attempt(db):
                 reservation.rollback()
                 return "Today's live demo AI allowance is used. Explore the prepared options or try after 00:00 UTC."
-        if job.mode == "bedrock" and not reserve_bedrock_attempt(db):
+        if job.mode == "bedrock" and not reserve_bedrock_attempt(
+            db, reviewer=reviewer_access_active(workspace.reviewer_token_hash)
+        ):
             reservation.rollback()
             return "Daily live-AI budget reached. Retry after 00:00 UTC or contact the owner."
-    if workspace.demo_expires_at is not None:
+    if public_demo_workspace(workspace):
         db.expire(workspace, ["demo_agent_attempts"])
     return None
 
@@ -182,14 +194,15 @@ def claim_next(db: Session) -> tuple[str, str] | None:
     )
     candidates = db.scalars(
         select(Job)
+        .join(Workspace, Workspace.id == Job.workspace_id)
         .where(
             Job.attempts < Job.max_attempts,
             ~busy_order,
             or_(Job.status == "queued", (Job.status == "running") & (Job.leased_until < now)),
         )
-        .order_by(Job.created_at)
+        .order_by(case((Workspace.reviewer_token_hash.is_not(None), 0), else_=1), Job.created_at)
         .limit(20)
-        .with_for_update(skip_locked=True)
+        .with_for_update(skip_locked=True, of=Job)
     ).all()
     for job in candidates:
         # The same order is analyzed serially, including across worker processes.

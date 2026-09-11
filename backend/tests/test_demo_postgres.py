@@ -209,3 +209,58 @@ def test_lease_recovery_and_utc_rollover_cannot_reset_demo_lifetime_limit(
         assert db.get(AgentDailyUsage, clock[0].date()) is None
         assert db.get(DemoDailyUsage, clock[0].date()) is None
         assert len(list(db.scalars(select(Job)))) == 2
+
+
+@pytest.mark.postgres
+def test_concurrent_reviewer_metering_does_not_compete_with_public_budget(
+    demo_pg_engine, monkeypatch
+):
+    monkeypatch.setattr(get_settings(), "max_daily_bedrock_attempts", 2)
+    barrier = Barrier(10)
+
+    def reserve(reviewer):
+        with Session(demo_pg_engine) as db:
+            db.execute(text("SET LOCAL lock_timeout = '5s'"))
+            barrier.wait(timeout=10)
+            accepted = jobs.reserve_bedrock_attempt(db, reviewer=reviewer)
+            db.commit()
+            return reviewer, accepted
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        results = list(pool.map(reserve, [True, False] * 5))
+    assert sum(ok for reviewer, ok in results if reviewer) == 5
+    assert sum(ok for reviewer, ok in results if not reviewer) == 2
+    with Session(demo_pg_engine) as db:
+        usage = db.get(AgentDailyUsage, utcnow().date())
+        assert (usage.attempts, usage.reviewer_attempts) == (2, 5)
+        assert jobs.reserve_bedrock_attempt(db, reviewer=True)
+        db.rollback()
+        db.expire_all()
+        assert db.get(AgentDailyUsage, utcnow().date()).reviewer_attempts == 5
+
+
+@pytest.mark.postgres
+def test_reviewer_job_precedes_public_backlog_and_keeps_lease_serialization(
+    demo_pg_engine, monkeypatch
+):
+    settings = get_settings()
+    key = "a" * 64
+    deadline = utcnow() + timedelta(days=45)
+    monkeypatch.setattr(settings, "reviewer_token_hash", key)
+    monkeypatch.setattr(settings, "reviewer_expires_at", deadline)
+    with Session(demo_pg_engine, expire_on_commit=False) as db:
+        public = add_workspace(db, expires_at=utcnow() + timedelta(hours=1))
+        public_job = add_job(db, public)
+        reviewer = add_workspace(db, expires_at=deadline)
+        reviewer.reviewer_token_hash = key
+        reviewer_job = add_job(db, reviewer)
+        public_id, reviewer_id = public_job.id, reviewer_job.id
+        db.commit()
+        assert jobs.claim_next(db)[0] == reviewer_id
+        db.commit()
+        assert db.get(Job, public_id).status == "queued"
+        assert db.get(Job, reviewer_id).attempts == 1
+        assert jobs.claim_next(db)[0] == public_id
+        db.commit()
+        usage = db.get(AgentDailyUsage, utcnow().date())
+        assert (usage.attempts, usage.reviewer_attempts) == (1, 1)

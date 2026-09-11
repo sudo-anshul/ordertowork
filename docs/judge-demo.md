@@ -49,3 +49,26 @@ The release script validates the nonsecret configuration, deploys the immutable 
 Backend checks cover guest isolation, expiry, protected business actions and budget limits. PostgreSQL tests use unique temporary schemas to exercise concurrent admission and budget reservation. Guest fixtures also run against dates beyond the original event week, including a daylight-saving transition.
 
 After deployment, verify the complete guest flow in a fresh browser, ensure another browser cannot read its workspace, confirm logout returns to the application rather than Cognito, and verify the business sign-in link still opens Cognito. A successful demo-entry or health check does not establish that Bedrock inference is available.
+
+## Protected reviewer access
+
+A private reviewer link is available separately from the public demo. It opens two isolated synthetic workspaces without signup, keeps access until an explicitly configured UTC deadline, and offers **Start fresh examples** for repeating the workflow. Reviewers can use owner features such as creating orders/workspaces, changing business rules and uploading sample files. Platform administration remains restricted to authorized operators.
+
+Reviewer sessions do not consume public admission, per-workspace demo, daily workspace or daily public AI allowances. Paid reviewer attempts are metered separately in `agent_daily_usage.reviewer_attempts`; queued reviewer work takes priority over queued public work. A currently running model call is not interrupted. Per-run turn/token/time bounds and the owner's explicit global inference stop switch (`OTW_MAX_DAILY_BEDROCK_ATTEMPTS=0`) still apply. This is not a dollar-denominated AWS spending cap: keep the private link out of public pages and reserve actual cloud funds for its use.
+
+Generate a cryptographically random link outside the repository:
+
+```bash
+uv run python scripts/create_reviewer_link.py \
+  --url https://orders.example.com \
+  --expires-at 2026-10-16T00:00:00Z \
+  --output /path/outside/repository/private-reviewer
+```
+
+The tool writes mode-0600 `reviewer-access.json` (private URL/token) and `reviewer-runtime.json` (hash/expiry only), refusing to overwrite an existing link. Transfer **only** the latter file's `OTW_REVIEWER_TOKEN_HASH` and `OTW_REVIEWER_EXPIRES_AT` values into the deployment service manifest's `app_env`. The existing release helper validates and carries them into API/worker configuration. Deploy the migration and matching frontend/backend together. No new AWS service is required.
+
+Share the private URL only through the intended reviewer instructions. The token is carried in the URL fragment, exchanged through a POST and removed from the address bar; it is never stored in localStorage/sessionStorage or embedded in public source. A server-side hash binds sessions and workspaces to the configured access. Expiry, clearing both configuration values, or rotating the hash disables old sessions, customer links and queued/result-application paths. Expiry does not erase stored data or backups.
+
+If a normal business session is already open, the page asks the visitor to switch explicitly before replacing it. Otherwise the link opens the workbench automatically. Reloading resumes the private session. Opening **Start fresh examples** creates new isolated sample workspaces and revokes the previous browser session; ordinary business records are untouched.
+
+Verify a release with the existing two-analysis check, adding `--reviewer-access-file /private/path/reviewer-access.json` to `scripts/check_live_mantle.py`. The file's origin must match `--url`; tokens must not be passed as CLI arguments, committed, or included in screenshots/reports. The check still requires `--run-paid-check`, does not retry inference automatically, and emits sanitized evidence only. Verify public-quota exhaustion, revocation and isolation locally before using paid inference.

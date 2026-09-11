@@ -15,7 +15,7 @@ from ordertowork.config import Settings, get_settings
 from ordertowork.db import get_db, utcnow
 from ordertowork.models.auth import AuthAuditEvent, AuthSession
 from ordertowork.models.core import Membership, User, Workspace
-from ordertowork.services.demo import demo_workspace_active
+from ordertowork.services.demo import demo_workspace_active, reviewer_access_active
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -99,7 +99,7 @@ def check_request_origin(request: Request, settings: Settings) -> None:
 def platform_admin(user: User, settings: Settings | None = None) -> bool:
     settings = settings or get_settings()
     allowed = {item for item in re.split(r"[\s,]+", settings.platform_admin_subjects) if item}
-    if user.provider_subject.startswith("demo:"):
+    if user.provider_subject.startswith(("demo:", "reviewer:")):
         return False
     if user.provider_subject.startswith("development:") and not development_enabled(settings):
         return False
@@ -118,6 +118,10 @@ def is_demo_actor(actor: Actor) -> bool:
         (actor.session is not None and actor.session.auth_method == "demo")
         or actor.user.provider_subject.startswith("demo:")
     )
+
+
+def is_reviewer_actor(actor: Actor) -> bool:
+    return bool(actor.session is not None and actor.session.auth_method == "reviewer")
 
 
 def require_business_actor(actor: Actor) -> None:
@@ -140,6 +144,8 @@ def request_session(request: Request, db: Session) -> AuthSession | None:
         return None
     if session.auth_method == "demo":
         return session if settings.demo_enabled else None
+    if session.auth_method == "reviewer":
+        return session if reviewer_access_active(session.reviewer_token_hash) else None
     return session if session.auth_method == settings.auth_mode else None
 
 
@@ -207,6 +213,7 @@ def issue_session(
     response: Response,
     *,
     expires_at: datetime | None = None,
+    reviewer_token_hash: str | None = None,
 ) -> AuthSession:
     settings = get_settings()
     if not 1 <= settings.session_hours <= 168:
@@ -220,6 +227,7 @@ def issue_session(
         token_hash=digest(raw),
         csrf_token=secrets.token_urlsafe(32),
         auth_method=auth_method,
+        reviewer_token_hash=reviewer_token_hash,
         expires_at=expires_at,
     )
     db.add(session)
@@ -280,6 +288,9 @@ def actor_payload(db: Session, actor: Actor) -> dict:
             "max_agent_jobs_per_workspace": get_settings().max_demo_agent_jobs,
         }
         if actor.session is not None and is_demo_actor(actor)
+        else None,
+        "reviewer": {"expires_at": aware(actor.session.expires_at).isoformat()}
+        if is_reviewer_actor(actor)
         else None,
     }
 

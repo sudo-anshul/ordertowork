@@ -27,6 +27,7 @@ class AuthSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     csrf_token: Mapped[str] = mapped_column(String(96))
     auth_method: Mapped[str] = mapped_column(String(20))
+    reviewer_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

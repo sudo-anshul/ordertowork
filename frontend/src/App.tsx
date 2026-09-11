@@ -12,6 +12,7 @@ import { useWorkspace } from './lib/workspace';
 import { EmptyState } from './components/ui';
 import { LoginPage, SetupPage } from './pages/auth';
 import { CustomerPage } from './pages/customer';
+import { ReviewerPage } from './pages/reviewer';
 import { NewOrderPage } from './pages/new-order';
 import { OrderDetailPage } from './pages/order-detail';
 import { DecisionsPage, OrdersPage } from './pages/orders-list';
@@ -30,6 +31,7 @@ export default function App() {
     <Routes>
       <Route path="/customer/:token" element={<CustomerPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/review" element={<ReviewerPage />} />
       <Route path="/" element={<Home />} />
       <Route element={<SessionGuard />}>
         <Route element={<BusinessAccountGuard />}>
