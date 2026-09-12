@@ -1,104 +1,150 @@
+<p align="center">
+  <a href="https://34-230-185-63.sslip.io">
+    <img src="docs/media/hero.png" alt="OrderToWork — Customer changes. Work everyone agrees on. A real workbench showing a customer request, proposed order revision, and stock and capacity constraints." width="100%">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://34-230-185-63.sslip.io"><img src="https://img.shields.io/badge/Try_the_live_demo-Open_workbench-176B53?style=for-the-badge" alt="Try the live demo"></a>
+  <a href="#walkthrough"><img src="https://img.shields.io/badge/See_the_workflow-3_GIF_walkthroughs-173449?style=for-the-badge" alt="See three GIF walkthroughs"></a>
+  <a href="#run-locally"><img src="https://img.shields.io/badge/Run_locally-No_AWS_required-173449?style=for-the-badge" alt="Run locally without AWS"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/strands-agents/sdk-python">Strands Agents</a> ·
+  <a href="https://aws.amazon.com/bedrock/">Amazon Bedrock</a> ·
+  Qwen3 · React · FastAPI · PostgreSQL ·
+  <a href="LICENSE">MIT licensed</a>
+</p>
+
 # OrderToWork
 
-A workbench for made-to-order businesses. Turn a customer request into a checked proposal, an exact agreement, and a production ticket the team can trust.
+An AI workbench for made-to-order businesses. A customer's “can we add fifteen more and collect earlier?” becomes a checked proposal, an exact agreement, and work the team can deliver.
 
-![OrderToWork workbench with a labeled sample order](docs/screenshots/workbench.png)
+The existing agreement stays intact while alternatives are explored. **People approve the change. Application rules protect the commitment.** Merchandise and bakery profiles share the workflow, with their own specifications, prices, stock, and production capacity.
 
-OrderToWork keeps the existing commitment intact while a change is explored. A Strands agent interprets the message and calls scoped tools for order facts, prices, stock and capacity. The application rechecks availability under database locks when the customer approves. An agent cannot accept an order, take money or release production.
+**[Open the live demo →](https://34-230-185-63.sslip.io)** No sign-up required. Choose **Try the live demo** for temporary sample workspaces. Saved examples open without inference; **Add customer message** runs the real Strands agent on Amazon Bedrock. Use fictional data in the demo.
 
-**[Try the live demo](https://34-230-185-63.sslip.io)** — no sign-up required. Each visitor receives private, temporary sample workspaces. Prepared examples make no model call; **Add customer message** runs the real Strands agent using **Qwen3 235B on Amazon Bedrock Mantle**.
+[Walkthrough](#walkthrough) · [Architecture](#architecture) · [Run locally](#run-locally) · [Deploy on AWS](#deploy-on-aws) · [Documentation](#documentation)
 
-The deployed merchandise and bakery workflows have been verified through live model analysis, checked proposals, customer approval, sample deposit recording and production start. See the [live verification record](docs/evidence/live-mantle-check.json). The complete local app also runs without AWS credentials: its default **reference mode is a limited deterministic interpreter, not live AI**.
+## One agreement, all the way through
 
-## What works
+| Customer change | Checked proposal | Exact approval | Production | Handover |
+| :--- | :--- | :--- | :--- | :--- |
+| Keep the message and source evidence. | Check price, stock, and dated capacity. | Bind consent to one revision and its terms. | Release the accepted ticket when checks pass. | Agree collection or delivery and record completion. |
 
-- Owner workbench, order register, message intake and durable analysis jobs.
-- Immutable proposals, price and resource checks, and private expiring customer review links.
-- Explicit customer consent, change requests, stale-link handling and atomic reservation replacement.
-- Manual deposit records, production holds, revision-bound tickets and production start.
-- [Ready for handover](docs/handover.md): collection/delivery choices, exact delivery-fee consent, remaining-payment receipts and recorded completion. Customer notification text is prepared for manual sharing.
-- Separate owner and operator permissions, membership management and platform support metadata.
-- Private PNG/JPEG/PDF attachments for owners, with size and content-type checks.
-- Configurable merchandise and bakery profiles, including prices, variants, stock, dated capacity and deposit requirements.
+## Walkthrough
 
-Samples are clearly labeled. Real workspaces begin with zero availability and empty production specifications. The two profiles demonstrate a shared workflow; this release does not claim to support every business process.
+These silent GIFs show the working application with synthetic orders and receipts. Excerpts omit waiting and navigation; they do not represent continuous processing speed. [Still images and step-by-step instructions →](docs/walkthrough.md)
 
-## Local development
+### 01 / Find a workable change
 
-Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), Node.js 22+ and a running Docker engine.
+The request exceeds navy stock and the earlier production slot. A real Strands run reads order context and checks feasibility. The owner can offer **45 charcoal shirts at the original pickup for $810**, with a **$135 deposit top-up**.
 
-From the repository root:
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/media/01-check-the-change.png">
+  <img src="docs/media/01-check-the-change.gif" alt="A Strands run checks a customer change, exposes tool activity and source evidence, and presents a feasible charcoal-shirt alternative." width="100%">
+</picture>
+
+Each option is checked against application rules. A suggestion does not replace the customer's accepted order.
+
+### 02 / Make what the customer approved
+
+The customer reviews the exact specifications, price, pickup, and deposit through a private link. Approval rechecks availability and replaces reservations atomically. The recorded deposit and production checks then control release of the accepted ticket.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/media/02-approve-and-produce.png">
+  <img src="docs/media/02-approve-and-produce.gif" alt="The customer approves revision 6; a sample deposit top-up is recorded; the accepted production ticket is reviewed and work starts." width="100%">
+</picture>
+
+The owner, customer, and operator work from the same accepted revision. An agent cannot approve an order, record a receipt, or start production.
+
+### 03 / Finish with a clear handover
+
+A customer link offers collection or a delivery request. Delivery needs acceptance of the exact address, fee, and terms. The business records the remaining payment and marks collection or delivery complete.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/media/03-complete-the-handover.png">
+  <img src="docs/media/03-complete-the-handover.gif" alt="The customer chooses delivery, accepts a five-dollar quote, and the business records completed handover with a zero sample balance." width="100%">
+</picture>
+
+The agreement continues beyond production. Handover uses application rules and requires no additional model call.
+
+<details>
+<summary><strong>Same workflow, a second business: Butter &amp; Crumb bakery</strong></summary>
+
+The bakery profile uses cupcake specifications and batch capacity measured in minutes. It shares the same proposal, consent, production, and handover rules. This is a prepared sample; additional industries still need validation with real businesses.
+
+![Bakery workbench showing a cupcake revision and a batch-capacity constraint](docs/media/bakery.png)
+
+</details>
+
+## Architecture
+
+One Strands agent connects language to current business facts. Shared Python services own authoritative prices, reservations, exact consent, and production and handover transitions.
+
+[![Deployed architecture: React through Caddy to FastAPI, PostgreSQL and a leased Strands worker; Qwen3 on Amazon Bedrock Mantle, Cognito, private S3, and the complete fulfillment workflow.](docs/media/architecture.png)](docs/media/architecture.pdf)
+
+[Full-size diagram](docs/media/architecture.png) · [Download PDF](docs/media/architecture.pdf) · [Technical design](docs/architecture.md)
+
+| Layer | Built with | Responsibility |
+| --- | --- | --- |
+| Interfaces | React · TypeScript | Owner decisions, operator tickets, customer consent |
+| API and domain | FastAPI · SQLAlchemy | Access, calculations, transactional commitments |
+| Analysis | Leased worker · Strands Agents | Interpretation, source evidence, scoped tools |
+| Model | Qwen3 235B A22B · Bedrock Mantle | Interpret customer language using order context |
+| Data and identity | PostgreSQL 17 · S3 · Cognito | Orders/jobs, private files/snapshots, business sign-in |
+| Hosting | ARM EC2 · Docker Compose · Caddy | API, worker, database, and HTTPS on one host |
+
+<details>
+<summary><strong>What makes the agent execution reliable?</strong></summary>
+
+- **Scoped tools:** `read_order_context` supplies order facts; `preview_change` checks pricing, stock, and capacity. Neither commits a business action.
+- **Durable jobs:** a message and its analysis job commit together. The worker must still own the lease and current revision before saving results.
+- **Exact commitments:** approval locks rows, rechecks availability, and swaps reservations in one transaction. Stale consent cannot overwrite newer terms.
+- **Visible evidence:** records show the actual model, tool activity, source quotes, and reported usage. Failed inference remains a failed analysis.
+- **Bounded inference:** attempts, turns, and output are limited. A failed live run is never silently replaced with reference-mode output.
+
+Strands' OpenAI-compatible adapter targets **AWS Bedrock Mantle** using scoped IAM credentials and short-lived tokens. No OpenAI service account is required. [Provider setup →](deploy/mantle-README.md)
+
+</details>
+
+## Run locally
+
+Requires **Python 3.12**, [uv](https://docs.astral.sh/uv/), **Node.js 22+**, and a running **Docker** engine.
 
 ```sh
+git clone https://github.com/sudo-anshul/ordertowork.git
+cd ordertowork
 python3 scripts/dev.py
 ```
 
-The launcher creates `.env` from `.env.example` if absent, installs dependencies, starts local PostgreSQL, applies migrations, and runs the API, worker and Vite. Open **http://localhost:5173**. Use a test identity on the development sign-in screen, create a workspace, and select sample data to try a prepared scenario. Development sign-in is not verified identity and is restricted to loopback; never expose it publicly or enter real credentials into it.
+Open **http://localhost:5173**, use a test identity, and create a workspace with sample data. The launcher installs dependencies, starts PostgreSQL, applies migrations, and runs the API, worker, and frontend.
 
-Ctrl+C stops the application processes. PostgreSQL data stays in its Docker volume, and private local files stay in `.data/`. Run `docker compose stop db` to stop the database while retaining its data.
+The default **reference mode is a limited deterministic interpreter, not live AI**. It supports local exploration without AWS credentials. Development sign-in is loopback-only and is not verified identity; use test information. Live inference requires your own AWS credentials and model access.
 
-For separate terminals:
+[Detailed setup, separate terminals, ports, and checks →](docs/development.md)
 
-```sh
-cp .env.example .env  # First setup only; preserve an existing .env.
-uv sync --locked
-npm --prefix frontend ci
-docker compose up -d --wait db
-uv run alembic upgrade head
+## Deploy on AWS
 
-# Terminal 1
-uv run uvicorn ordertowork.main:app --reload --host 127.0.0.1 --port 8000 --no-access-log
-# Terminal 2
-uv run python -m ordertowork.worker
-# Terminal 3
-npm --prefix frontend run dev
-```
+The live deployment uses `OTW_AGENT_MODE=bedrock`, `OTW_BEDROCK_ENDPOINT=mantle`, and `OTW_BEDROCK_MODEL_ID=qwen.qwen3-235b-a22b-2507`.
 
-Ports: UI 5173, API 8000, PostgreSQL 55432. The UI proxies `/api` to FastAPI. `GET /api/health` checks the process, `/api/ready` checks the database connection, and `/api/runtime` identifies the configured execution mode. Interactive API documentation is at http://localhost:8000/api/docs.
+Follow the [single-host guide](deploy/budget-README.md), [Cognito/S3 setup](docs/aws-services.md), and [Mantle permissions](deploy/mantle-README.md). One production image runs the API and worker separately. Paid-attempt limits reduce exposure but are not a dollar spending cap; `OTW_MAX_DAILY_BEDROCK_ATTEMPTS=0` pauses paid inference.
 
-## Try the full workflow
+## Scope and validation
 
-For judge access, enable the [one-click live demo](docs/judge-demo.md). **Try the live demo** opens an isolated sample order immediately, with merchandise and bakery workspaces, a one-hour session and bounded AI usage. Business accounts continue to use Cognito sign-in. Saved proposals are labeled examples; new agent runs use the configured provider.
+The app includes owner/operator permissions, workspace memberships, private attachments, immutable proposals, holds, recorded receipts, and complete handover. Automated checks cover consent, concurrency, stale revisions, job leases, deposits, role boundaries, and handover. CI checks the backend against PostgreSQL, builds the frontend, and builds the production container. [CI runs](https://github.com/sudo-anshul/ordertowork/actions/workflows/ci.yml) · [Validation notes](docs/validation.md)
 
-1. Create a merchandise workspace with sample data. Open **OT-1048 / Field Notes Club**.
-2. Review the request to add 15 medium shirts and move pickup earlier. The original order is 30 navy shirts for $540; navy stock and Thursday capacity prevent the requested combination.
-3. To exercise the actual worker, use **Add customer message** and paste the sample request. Wait for the saved analysis.
-4. Share the option for 45 charcoal shirts at the original Friday pickup: $810, with $135 additional deposit. Sharing alone does not reserve the new resources.
-5. Open the customer view, review the differences, check consent and approve. Production remains blocked until the required deposit is recorded.
-6. For this sample only, record the $135 deposit with a clearly labeled test reference. View the accepted work order and start production.
-7. In the current source, open **Handover** when the product is finished. Prepare the collection/delivery details, create a private customer link and copy the notification text. This requires the latest deployed migration and frontend.
-8. On that link, choose collection or request delivery. For delivery, prepare the fee in the owner workbench and return to the customer link to accept it. Record the remaining sample balance, then mark collected or dispatch and mark delivered. The original production agreement remains intact.
+Receipts record money received elsewhere. Notifications are prepared for manual sharing. Delivery statuses are business records. Payment processing, automatic messaging, courier tracking/booking, and document interpretation are outside this release. Real-world adoption, time savings, and error reduction have not yet been measured.
 
-Revision numbers depend on how many proposals have been prepared. A second bakery sample exercises the same rules with batch capacity measured in minutes. Create another sample workspace to repeat a scenario; started work is intentionally not reset automatically.
+## Documentation
 
-## Checks
+| Start here | Go deeper |
+| --- | --- |
+| [Product walkthrough](docs/walkthrough.md) | [Architecture and consistency](docs/architecture.md) |
+| [Local development and checks](docs/development.md) | [HTTP API contract](docs/api-contract.md) |
+| [Ready for handover](docs/handover.md) | [Development conventions](docs/implementation-contract.md) |
+| [Live demo configuration](docs/judge-demo.md) | [AWS deployment runbook](deploy/README.md) |
+| [Hosted model verification](docs/live-mantle-checks.md) | [Cognito and storage verification](docs/live-aws-checks.md) |
 
-```sh
-OTW_TEST_DATABASE_URL=postgresql+psycopg://ordertowork:ordertowork@localhost:55432/ordertowork sh scripts/check.sh
-uv run alembic check
-npm --prefix frontend audit
-```
-
-PostgreSQL tests use temporary schemas and clean up their own data. Without `OTW_TEST_DATABASE_URL`, those checks skip; other tests use isolated SQLite databases. Coverage includes tenant and role boundaries, Cognito token validation with mocked provider calls, consent and stale revisions, approval races, job leases, deposits, file authorization and a scripted Strands tool round-trip. Tests do not establish live model accuracy or a production security audit.
-
-GitHub Actions runs backend checks with PostgreSQL, the frontend build and a complete container build. See [validation](docs/validation.md) for observed results.
-
-## AWS activation and deployment
-
-The app includes a non-root production Docker image, Cognito OAuth code/PKCE sign-in, Bedrock through Strands, private S3 storage, IAM examples and an [AWS deployment runbook](deploy/README.md). The same image runs the API and the worker as separate services. Production serves the built React app from FastAPI behind an HTTPS endpoint.
-
-The submission uses `OTW_AGENT_MODE=bedrock`, `OTW_BEDROCK_ENDPOINT=mantle`, and `OTW_BEDROCK_MODEL_ID=qwen.qwen3-235b-a22b-2507`. Strands' OpenAI-compatible provider connects to AWS, with short-lived tokens generated from the worker's IAM role. No separate OpenAI API key is needed. See [Mantle setup and scoped permissions](deploy/mantle-README.md). Local live inference requires your own authenticated AWS credentials and model access; reference mode remains the default for an offline walkthrough.
-
-For the $50 hackathon allowance, use the [single-host deployment](deploy/budget-README.md) and [AWS service setup](docs/aws-services.md). They provide Cognito, private S3, an account cost budget and one small ARM server running PostgreSQL, the API and the worker. The managed ECS/RDS topology is a later option with substantially higher idle costs.
-
-Live verification is documented separately from configuration in [the hosted Mantle check](docs/live-mantle-checks.md) and [storage/Cognito checks](docs/live-aws-checks.md). Model access varies by AWS account and endpoint. A failed model call remains a failed analysis; the app does not silently replace it with reference interpretation.
-
-Ordinary paid jobs have a global daily attempt allowance across workspaces, including retries. Protected reviewer attempts are separately metered as described in [reviewer access](docs/judge-demo.md). `OTW_MAX_DAILY_BEDROCK_ATTEMPTS=0` pauses all paid work. Per-run output, turn and token limits reduce exposure; the token limit is checked between turns and is not an AWS dollar spending cap. The execution record displays reported input/output tokens. Handover does not invoke a model.
-
-Never commit credentials, `.env`, `.data`, database dumps or real customer files. The repository ignores local secrets and runtime data.
-
-## Release boundaries
-
-Deposits record money received elsewhere; no payments or refunds are processed. Customer links are private bearer capabilities, not verified customer accounts. Outbound email/WhatsApp, document extraction, malware scanning, ingredient-level recipe planning, automated data erasure and a general profile builder are outside this release. Operators see approved production facts but do not have owner attachment access. Application queries enforce tenant isolation; PostgreSQL row-level security is not enabled.
-
-See [architecture](docs/architecture.md), [development conventions](docs/implementation-contract.md) and [HTTP contract](docs/api-contract.md). MIT licensed.
+Built by [Anshul](https://github.com/sudo-anshul) for Agents for Humans. [MIT license](LICENSE). Third-party marks identify the components used; see [media credits](docs/media/README.md).

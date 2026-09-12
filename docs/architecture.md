@@ -1,5 +1,14 @@
 # Architecture
 
+The deployed system carries a customer change through checked proposals, exact approval, production, and completed handover.
+
+[![OrderToWork deployed architecture with Strands Agents, Amazon Bedrock Mantle, and the fulfillment workflow](media/architecture.png)](media/architecture.pdf)
+
+[Full-size image](media/architecture.png) · [PDF](media/architecture.pdf) · [Product walkthrough](walkthrough.md)
+
+<details>
+<summary><strong>Text-based runtime flow</strong></summary>
+
 ```mermaid
 flowchart LR
   Owner[Business owner] --> UI[React workbench]
@@ -20,7 +29,14 @@ flowchart LR
   API --> Commit[Exact approval + atomic reservation swap]
   Commit --> DB
   DB --> Ticket[Revision-bound production ticket]
+  Ticket --> Finished[Production finished]
+  Finished --> Handover[Collection or delivery choice]
+  Handover --> Terms[Exact handover confirmation]
+  Terms --> Balance[Remaining payment recorded]
+  Balance --> Complete[Collected or delivered]
 ```
+
+</details>
 
 In development, explicit loopback-only identity and local file storage make the product runnable without AWS. The deterministic reference interpreter is clearly labeled; it is not an AI model. The same HTTP routes and transactional domain services are used in both modes. Production configuration requires Cognito, HTTPS and private S3 storage; Bedrock requires an explicit accessible model identifier and AWS credentials.
 
@@ -33,6 +49,8 @@ The deployed hackathon stack runs Caddy, the API, a separate worker and PostgreS
 An accepted order remains authoritative while alternatives are considered. Each proposal freezes its terms, resource requirements, base accepted revision and content hash. Sharing creates a scoped expiring approval token. Customer consent checks that exact revision and hash; the server locks the order and sorted resource rows, checks current availability, and swaps reservations in one transaction. Concurrent approval attempts cannot commit the same last resources. Duplicate approval is idempotent. A failed replacement preserves the prior terms and holds.
 
 Payment recording is a separate audited owner action, not payment processing. Production release requires current customer approval, committed resources, enough recorded deposit and no hold. Started work consumes its reservations and cannot be silently rewritten by an agent.
+
+Handover remains bound to the accepted production revision. The customer chooses collection or requests delivery; a delivery quote binds consent to the exact address, contact, fee, and notes. The business records the remaining payment before collection or dispatch, and completion stays in the order history. These transitions use version checks and database locks without invoking a model. See [handover rules](handover.md).
 
 ## Durable analysis
 
